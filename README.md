@@ -4,7 +4,7 @@ A multilingual showroom website for new cars in Egypt, with inventory management
 
 ## Live website
 
-The `main` branch automatically builds and publishes this React app to [GitHub Pages](https://wessamyasserxtr.github.io/lane-automotive/).
+The `main` branch is published to [GitHub Pages](https://wessamyasserxtr.github.io/lane-automotive/).
 
 ## Run locally
 
@@ -21,11 +21,3 @@ The local website opens at `http://localhost:3000`.
 Open [the admin page](https://wessamyasserxtr.github.io/lane-automotive/#/admin). On first access, create a private passcode with at least 8 characters.
 
 The dashboard currently saves its passcode, vehicle catalog, bookings, and showroom settings in the current browser only. It has no shared server database or server-side authentication; use it as a single-browser demo dashboard.
-
-## Features
-
-- Arabic, English, French, Chinese, and German
-- New-car inventory, favorites, and comparisons
-- Vehicle detail pages and interactive 3D options where a matching model is available
-- Financing estimates and WhatsApp contact for showroom visits
-- Admin controls for vehicles, bookings, FAQs, reviews, and showroom settings
