@@ -408,7 +408,7 @@ export default function App() {
     <div className="min-h-screen bg-[#090909] text-[#f5f3ef]">
       <DriftIntro visible={welcomeStep === 'intro'} lang={lang} onFinish={() => setWelcomeStep('login')} />
       {welcomeStep === 'login' && (
-        <WelcomeLogin lang={lang} loading={authLoading} onGoogleLogin={handleWelcomeGoogleLogin} onContinueAsGuest={() => setWelcomeStep('recommendation')} />
+        <WelcomeLogin lang={lang} loading={authLoading} onGoogleLogin={handleWelcomeGoogleLogin} />
       )}
       <QuizGate
         open={gateOpen && route.page !== 'admin'}
@@ -689,34 +689,40 @@ export default function App() {
   );
 }
 
-function WelcomeLogin({ lang, loading, onGoogleLogin, onContinueAsGuest }: {
+function WelcomeLogin({ lang, loading, onGoogleLogin }: {
   lang: LangCode;
   loading: boolean;
   onGoogleLogin: () => Promise<void>;
-  onContinueAsGuest: () => void;
 }) {
   const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const isAr = lang === 'ar';
-  const c = isAr
-    ? { title: 'أهلاً بك في LANE', subtitle: 'اختاري حساب Google للمتابعة. أول دخول ينشئ حسابك تلقائياً.', google: 'المتابعة باستخدام Google', guest: 'المتابعة كزائرة', busy: 'جارٍ فتح Google…', invalid: 'تعذر فتح تسجيل Google. قد يحتاج مسؤول الموقع إلى إكمال إعداد المزوّد.' }
-    : { title: 'Welcome to LANE', subtitle: 'Choose a Google account to continue. Your account is created automatically the first time.', google: 'Continue with Google', guest: 'Continue as a guest', busy: 'Opening Google…', invalid: 'Could not start Google sign-in. The site owner may need to finish provider setup.' };
-  const signIn = async () => {
-    setError(''); setSubmitting(true);
-    try { await onGoogleLogin(); } catch { setError(c.invalid); setSubmitting(false); }
+  const [submitting, setSubmitting] = useState<'create' | 'signin' | null>(null);
+  const copy = {
+    ar: { title: 'أهلاً بك في LANE', subtitle: 'أنشئي حسابًا جديدًا أو سجّلي الدخول بحساب Google. أول دخول ينشئ حسابك تلقائيًا.', create: 'إنشاء حساب جديد', signin: 'تسجيل الدخول', hint: 'اختاري حساب Google من النافذة. لو معندكيش حساب، اختاري «إنشاء حساب» هناك.', busy: 'جارٍ فتح Google…', invalid: 'تعذر فتح تسجيل Google. حاولي مرة أخرى أو تواصلي مع إدارة الموقع.' },
+    en: { title: 'Welcome to LANE', subtitle: 'Create an account or sign in with Google. Your account is created automatically the first time.', create: 'Create a new account', signin: 'Sign in', hint: 'Choose a Google account. To create one, select “Create account” in the Google window.', busy: 'Opening Google…', invalid: 'Could not start Google sign-in. Try again or contact the site administrator.' },
+    fr: { title: 'Bienvenue chez LANE', subtitle: 'Créez un compte ou connectez-vous avec Google. Votre compte sera créé automatiquement lors de la première connexion.', create: 'Créer un compte', signin: 'Se connecter', hint: 'Choisissez un compte Google. Pour en créer un, sélectionnez « Créer un compte » dans la fenêtre Google.', busy: 'Ouverture de Google…', invalid: 'Impossible de démarrer la connexion Google. Réessayez ou contactez le site.' },
+    zh: { title: '欢迎来到 LANE', subtitle: '使用 Google 创建账户或登录。首次登录时会自动创建您的账户。', create: '创建新账户', signin: '登录', hint: '选择 Google 账户。要创建账户，请在 Google 弹窗中选择“创建账户”。', busy: '正在打开 Google…', invalid: '无法启动 Google 登录。请重试或联系网站管理员。' },
+    de: { title: 'Willkommen bei LANE', subtitle: 'Erstelle ein Konto oder melde dich mit Google an. Beim ersten Login wird dein Konto automatisch erstellt.', create: 'Neues Konto erstellen', signin: 'Anmelden', hint: 'Wähle ein Google-Konto aus. Um ein Konto zu erstellen, wähle im Google-Fenster „Konto erstellen“.', busy: 'Google wird geöffnet…', invalid: 'Google-Anmeldung konnte nicht gestartet werden. Bitte erneut versuchen oder den Website-Administrator kontaktieren.' },
+  }[lang];
+  const continueWithGoogle = async (intent: 'create' | 'signin') => {
+    setError(''); setSubmitting(intent);
+    try { await onGoogleLogin(); } catch { setError(copy.invalid); setSubmitting(null); }
   };
   return (
-    <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[radial-gradient(ellipse_at_70%_12%,#281416_0%,#111_44%,#080809_82%)] px-5 py-10" dir={isAr ? 'rtl' : 'ltr'}>
+    <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[radial-gradient(ellipse_at_70%_12%,#281416_0%,#111_44%,#080809_82%)] px-5 py-10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-md border border-white/10 bg-[#101012]/95 p-7 shadow-2xl shadow-black/50 sm:p-9">
         <div className="mb-8 text-center"><div className="font-latin text-5xl font-extrabold tracking-tight text-white">LANE<span className="text-[#ed1c24]">.</span></div><p className="mt-2 text-xs tracking-[0.35em] text-white/50">AUTOMOTIVE</p></div>
-        <h1 className="text-2xl font-bold text-white">{c.title}</h1><p className="mt-2 text-sm text-white/60">{c.subtitle}</p>
+        <h1 className="text-2xl font-bold text-white">{copy.title}</h1><p className="mt-2 text-sm leading-6 text-white/60">{copy.subtitle}</p>
         {error && <p role="alert" className="mt-5 text-sm text-red-400">{error}</p>}
-        <button type="button" onClick={() => void signIn()} disabled={submitting || loading} className="mt-7 flex w-full items-center justify-center gap-3 border border-white/20 bg-white px-4 py-3 font-semibold text-[#202124] transition hover:bg-white/90 disabled:opacity-60">
-          <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.2A20 20 0 0 0 24 44Z"/><path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.2H5.8a20 20 0 0 0 0 17.6l6.8-5.2Z"/><path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 5.9 29.5 4 24 4A20 20 0 0 0 5.8 15.2l6.8 5.2C14.2 15.6 18.7 12 24 12Z"/></svg>
-          {submitting ? c.busy : c.google}
-        </button>
-        <div className="my-5 flex items-center gap-3 text-xs text-white/35"><span className="h-px flex-1 bg-white/10" /><span>LANE</span><span className="h-px flex-1 bg-white/10" /></div>
-        <button type="button" onClick={onContinueAsGuest} className="w-full border border-white/20 px-4 py-3 text-sm font-medium text-white/80 transition hover:border-white/50 hover:text-white">{c.guest}</button>
+        <div className="mt-7 grid gap-3 sm:grid-cols-2">
+          {(['create', 'signin'] as const).map((intent) => (
+            <button key={intent} type="button" onClick={() => void continueWithGoogle(intent)} disabled={submitting !== null || loading} className={intent === 'create'
+              ? 'flex min-h-12 items-center justify-center gap-2 border border-[#ed1c24] bg-[#ed1c24] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#cf1720] disabled:cursor-wait disabled:opacity-60'
+              : 'flex min-h-12 items-center justify-center gap-2 border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-[#202124] transition hover:bg-white/90 disabled:cursor-wait disabled:opacity-60'}>
+              {submitting === intent ? copy.busy : copy[intent]}
+            </button>
+          ))}
+        </div>
+        <p className="mt-4 text-center text-xs leading-5 text-white/45">{copy.hint}</p>
       </div>
     </div>
   );
