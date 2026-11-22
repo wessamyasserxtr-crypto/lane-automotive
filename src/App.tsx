@@ -6,6 +6,24 @@
 import { useEffect, useState } from 'react';
 import { ArrowUpRight, Calculator, CalendarCheck, GitCompareArrows, Sparkles } from 'lucide-react';
 import {
+  browserLocalPersistence,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  setPersistence,
+  signInWithPopup,
+  signOut,
+} from 'firebase/auth';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+} from 'firebase/firestore';
+import {
   CARS,
   type CarModel,
   type CurrencyCode,
@@ -22,7 +40,7 @@ import {
   type ShowroomSettings,
   type VisitBooking,
 } from './data/store';
-import { isSupabaseConfigured, supabase } from './lib/supabase';
+import { firebaseAuth, firestore, isFirebaseConfigured, LANE_ADMIN_EMAIL } from './lib/firebase';
 import {
   buildHashForRoute,
   parseRouteFromHash,
@@ -110,72 +128,50 @@ export default function App() {
   const t = TRANSLATIONS[lang];
 
   useEffect(() => {
-    if (!supabase) {
+    if (!firebaseAuth) {
       setAuthLoading(false);
       return;
     }
-    let active = true;
-    const applySession = async (session: { user: { id: string } } | null) => {
-      if (!session) {
-        if (active) setIsAdminAuthenticated(false);
-        return;
-      }
-      const { data, error } = await supabase.rpc('is_lane_admin');
-      if (active) setIsAdminAuthenticated(!error && data === true);
-    };
-    void supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        setWelcomeStep('site');
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+      if (!user) {
+        setIsAdminAuthenticated(false);
+      } else {
+        const isLaneAdmin = user.email?.toLowerCase() === LANE_ADMIN_EMAIL && user.emailVerified;
+        setIsAdminAuthenticated(isLaneAdmin);
+        setWelcomeStep((current) => {
+          if (current === 'login') return 'recommendation';
+          if (current === 'intro') return 'site';
+          return current;
+        });
         try { sessionStorage.setItem('laneWelcomeSeen', '1'); } catch { /* Ignore */ }
       }
-      return applySession(data.session);
-    }).catch(() => {
-      if (active) setIsAdminAuthenticated(false);
-    }).finally(() => {
-      if (active) setAuthLoading(false);
+      setAuthLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setIsAdminAuthenticated(false);
-        return;
-      }
-      window.setTimeout(() => { void applySession(session); }, 0);
-    });
-    return () => {
-      active = false;
-      subscription.unsubscribe();
-    };
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
-    if (!supabase || !isAdminAuthenticated) {
+    if (!firestore || !isAdminAuthenticated) {
       setRemoteDataReady(false);
       return;
     }
     let active = true;
     void (async () => {
       try {
-        const [{ data: showroom, error: showroomError }, { data: bookingRows, error: bookingsError }] = await Promise.all([
-          supabase.from('showroom_state').select('cars,settings').eq('id', 'primary').maybeSingle(),
-          supabase.from('visit_bookings').select('*').order('created_at', { ascending: false }),
+        const [showroomSnapshot, bookingSnapshot] = await Promise.all([
+          getDoc(doc(firestore, 'showroom_state', 'primary')),
+          getDocs(query(collection(firestore, 'visit_bookings'), orderBy('createdAt', 'desc'))),
         ]);
-        if (showroomError) throw showroomError;
-        if (bookingsError) throw bookingsError;
         if (!active) return;
+        const showroom = showroomSnapshot.exists() ? showroomSnapshot.data() : null;
         if (showroom?.cars) setCars(showroom.cars as CarModel[]);
         if (showroom?.settings) setSettings(showroom.settings as ShowroomSettings);
-        setBookings((bookingRows || []).map((row) => ({
+        setBookings(bookingSnapshot.docs.map((row) => ({
+          ...row.data(),
           id: row.id,
-          name: row.name,
-          phone: row.phone,
-          carId: row.car_id,
-          date: row.visit_date,
-          status: row.status,
-          notes: row.notes || undefined,
-          createdAt: row.created_at,
         })) as VisitBooking[]);
       } catch (error) {
-        console.error('Could not load LANE data from Supabase:', error);
+        console.error('Could not load LANE data from Firebase:', error);
       } finally {
         if (active) setRemoteDataReady(true);
       }
@@ -184,29 +180,23 @@ export default function App() {
   }, [isAdminAuthenticated]);
 
   useEffect(() => {
-    if (!supabase || !isAdminAuthenticated || !remoteDataReady) return;
-    void supabase.from('showroom_state').upsert({
-      id: 'primary', cars, settings, updated_at: new Date().toISOString(),
-    }).then(({ error }) => {
-      if (error) console.error('Could not save LANE showroom data:', error);
-    });
+    if (!firestore || !isAdminAuthenticated || !remoteDataReady) return;
+    void setDoc(doc(firestore, 'showroom_state', 'primary'), {
+      cars, settings, updatedAt: serverTimestamp(),
+    }, { merge: true }).catch((error) => console.error('Could not save LANE showroom data:', error));
   }, [cars, settings, isAdminAuthenticated, remoteDataReady]);
 
   useEffect(() => {
-    if (!supabase || !isAdminAuthenticated || !remoteDataReady) return;
-    const rows = bookings.map((booking) => ({
-      id: booking.id,
+    if (!firestore || !isAdminAuthenticated || !remoteDataReady) return;
+    void Promise.all(bookings.map((booking) => setDoc(doc(firestore, 'visit_bookings', booking.id), {
       name: booking.name,
       phone: booking.phone,
-      car_id: booking.carId,
-      visit_date: booking.date,
+      carId: booking.carId,
+      date: booking.date,
       status: booking.status,
       notes: booking.notes || null,
-      created_at: booking.createdAt,
-    }));
-    if (rows.length) void supabase.from('visit_bookings').upsert(rows).then(({ error }) => {
-      if (error) console.error('Could not save LANE visit bookings:', error);
-    });
+      createdAt: booking.createdAt,
+    }, { merge: true }))).catch((error) => console.error('Could not save LANE visit bookings:', error));
   }, [bookings, isAdminAuthenticated, remoteDataReady]);
 
   useEffect(() => {
@@ -215,12 +205,12 @@ export default function App() {
   }, [lang]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!firestore) return;
     let active = true;
-    void supabase.from('showroom_state').select('cars,settings').eq('id', 'primary').maybeSingle()
-      .then(({ data, error }) => {
-        if (error) throw error;
-        if (!active || !data) return;
+    void getDoc(doc(firestore, 'showroom_state', 'primary'))
+      .then((snapshot) => {
+        if (!active || !snapshot.exists()) return;
+        const data = snapshot.data();
         if (data.cars) setCars(data.cars as CarModel[]);
         if (data.settings) setSettings(data.settings as ShowroomSettings);
       })
@@ -355,20 +345,13 @@ export default function App() {
     try { sessionStorage.setItem('laneWelcomeSeen', '1'); } catch { /* Ignore */ }
   };
 
-  const handleWelcomeLogin = async (email: string, password: string) => {
-    if (!supabase) throw new Error('إعداد تسجيل الدخول غير مكتمل بعد.');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+  const handleWelcomeGoogleLogin = async () => {
+    if (!firebaseAuth) throw new Error('إعداد تسجيل الدخول غير مكتمل بعد.');
+    await setPersistence(firebaseAuth, browserLocalPersistence);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    await signInWithPopup(firebaseAuth, provider);
     setWelcomeStep('recommendation');
-  };
-
-  const handleWelcomeSignup = async (email: string, password: string) => {
-    if (!supabase) throw new Error('إعداد إنشاء الحساب غير مكتمل بعد.');
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
-    if (!data.session) return false;
-    setWelcomeStep('recommendation');
-    return true;
   };
 
   const handleBookVisit = (carId: string) => {
@@ -379,36 +362,34 @@ export default function App() {
 
   const handleAddBooking = (booking: VisitBooking) => {
     setBookings((prev) => [booking, ...prev]);
-    if (supabase) {
-      void supabase.from('visit_bookings').insert({
-        id: booking.id,
+    if (firestore) {
+      void setDoc(doc(firestore, 'visit_bookings', booking.id), {
         name: booking.name,
         phone: booking.phone,
-        car_id: booking.carId,
-        visit_date: booking.date,
+        carId: booking.carId,
+        date: booking.date,
         status: booking.status,
         notes: booking.notes || null,
-        created_at: booking.createdAt,
-      }).then(({ error }) => {
-        if (error) console.error('Could not save LANE visit request:', error);
-      });
+        createdAt: booking.createdAt,
+      }).catch((error) => console.error('Could not save LANE visit request:', error));
     }
   };
 
-  const handleAdminLogin = async (email: string, password: string) => {
-    if (!supabase) throw new Error('إعداد قاعدة البيانات غير مكتمل بعد.');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    const { data: isAdmin, error: roleError } = await supabase.rpc('is_lane_admin');
-    if (roleError || !isAdmin) {
-      await supabase.auth.signOut();
+  const handleAdminLogin = async () => {
+    if (!firebaseAuth) throw new Error('إعداد قاعدة البيانات غير مكتمل بعد.');
+    await setPersistence(firebaseAuth, browserLocalPersistence);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const { user } = await signInWithPopup(firebaseAuth, provider);
+    if (user.email?.toLowerCase() !== LANE_ADMIN_EMAIL || !user.emailVerified) {
+      await signOut(firebaseAuth);
       throw new Error('الحساب غير مضاف لقائمة مديري LANE.');
     }
     setIsAdminAuthenticated(true);
   };
 
   const handleAdminLogout = async () => {
-    if (supabase) await supabase.auth.signOut();
+    if (firebaseAuth) await signOut(firebaseAuth);
   };
 
   const handleResetFactory = () => {
@@ -427,7 +408,7 @@ export default function App() {
     <div className="min-h-screen bg-[#090909] text-[#f5f3ef]">
       <DriftIntro visible={welcomeStep === 'intro'} lang={lang} onFinish={() => setWelcomeStep('login')} />
       {welcomeStep === 'login' && (
-        <WelcomeLogin lang={lang} loading={authLoading} onLogin={handleWelcomeLogin} onSignup={handleWelcomeSignup} onContinueAsGuest={() => setWelcomeStep('recommendation')} />
+        <WelcomeLogin lang={lang} loading={authLoading} onGoogleLogin={handleWelcomeGoogleLogin} onContinueAsGuest={() => setWelcomeStep('recommendation')} />
       )}
       <QuizGate
         open={gateOpen && route.page !== 'admin'}
@@ -657,7 +638,7 @@ export default function App() {
             bookings={bookings}
             settings={settings}
             isAuthenticated={isAdminAuthenticated}
-            authConfigured={isSupabaseConfigured}
+            authConfigured={isFirebaseConfigured}
             authLoading={authLoading}
             onLogin={handleAdminLogin}
             onLogout={handleAdminLogout}
@@ -708,44 +689,32 @@ export default function App() {
   );
 }
 
-function WelcomeLogin({ lang, loading, onLogin, onSignup, onContinueAsGuest }: {
+function WelcomeLogin({ lang, loading, onGoogleLogin, onContinueAsGuest }: {
   lang: LangCode;
   loading: boolean;
-  onLogin: (email: string, password: string) => Promise<void>;
-  onSignup: (email: string, password: string) => Promise<boolean>;
+  onGoogleLogin: () => Promise<void>;
   onContinueAsGuest: () => void;
 }) {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const isAr = lang === 'ar';
-  const [notice, setNotice] = useState('');
   const c = isAr
-    ? { title: 'أهلاً بك في LANE', subtitle: 'سجّل الدخول أو أنشئ حساباً للمتابعة.', email: 'البريد الإلكتروني', password: 'كلمة المرور', submit: 'تسجيل الدخول', create: 'إنشاء حساب', switchLogin: 'لديك حساب؟ تسجيل الدخول', switchSignup: 'ليس لديك حساب؟ إنشاء حساب', guest: 'المتابعة كزائر', busy: 'جارٍ التحقق…', invalid: 'تعذر إتمام العملية. راجع البريد وكلمة المرور وحاول مجدداً.', confirm: 'تم إنشاء الحساب. راجع بريدك لتأكيده، ثم سجّل الدخول.' }
-    : { title: 'Welcome to LANE', subtitle: 'Sign in or create an account to continue.', email: 'Email address', password: 'Password', submit: 'Sign in', create: 'Create account', switchLogin: 'Already have an account? Sign in', switchSignup: 'New to LANE? Create an account', guest: 'Continue as guest', busy: 'Please wait…', invalid: 'Could not complete this. Check your email and password.', confirm: 'Account created. Check your email to confirm, then sign in.' };
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); setError(''); setSubmitting(true);
-    setNotice('');
-    try {
-      if (mode === 'login') await onLogin(email.trim(), password);
-      else if (!await onSignup(email.trim(), password)) { setNotice(c.confirm); setMode('login'); }
-    } catch { setError(c.invalid); } finally { setSubmitting(false); }
+    ? { title: 'أهلاً بك في LANE', subtitle: 'اختاري حساب Google للمتابعة. أول دخول ينشئ حسابك تلقائياً.', google: 'المتابعة باستخدام Google', guest: 'المتابعة كزائرة', busy: 'جارٍ فتح Google…', invalid: 'تعذر فتح تسجيل Google. قد يحتاج مسؤول الموقع إلى إكمال إعداد المزوّد.' }
+    : { title: 'Welcome to LANE', subtitle: 'Choose a Google account to continue. Your account is created automatically the first time.', google: 'Continue with Google', guest: 'Continue as a guest', busy: 'Opening Google…', invalid: 'Could not start Google sign-in. The site owner may need to finish provider setup.' };
+  const signIn = async () => {
+    setError(''); setSubmitting(true);
+    try { await onGoogleLogin(); } catch { setError(c.invalid); setSubmitting(false); }
   };
   return (
     <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[radial-gradient(ellipse_at_70%_12%,#281416_0%,#111_44%,#080809_82%)] px-5 py-10" dir={isAr ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-md border border-white/10 bg-[#101012]/95 p-7 shadow-2xl shadow-black/50 sm:p-9">
         <div className="mb-8 text-center"><div className="font-latin text-5xl font-extrabold tracking-tight text-white">LANE<span className="text-[#ed1c24]">.</span></div><p className="mt-2 text-xs tracking-[0.35em] text-white/50">AUTOMOTIVE</p></div>
         <h1 className="text-2xl font-bold text-white">{c.title}</h1><p className="mt-2 text-sm text-white/60">{c.subtitle}</p>
-        <form onSubmit={submit} className="mt-7 space-y-4">
-          <label className="block text-sm text-white/75">{c.email}<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-2 w-full border border-white/15 bg-black/35 px-4 py-3 text-white outline-none focus:border-[#ed1c24]" /></label>
-          <label className="block text-sm text-white/75">{c.password}<input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-2 w-full border border-white/15 bg-black/35 px-4 py-3 text-white outline-none focus:border-[#ed1c24]" /></label>
-          {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
-          <button type="submit" disabled={submitting || loading} className="w-full bg-[#ed1c24] px-4 py-3 font-semibold text-white transition hover:bg-red-600 disabled:opacity-60">{submitting ? c.busy : mode === 'login' ? c.submit : c.create}</button>
-        </form>
-        {notice && <p role="status" className="mt-4 text-sm text-emerald-400">{notice}</p>}
-        <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setNotice(''); }} className="mt-4 w-full text-sm text-white/65 underline decoration-white/25 underline-offset-4 hover:text-white">{mode === 'login' ? c.switchSignup : c.switchLogin}</button>
+        {error && <p role="alert" className="mt-5 text-sm text-red-400">{error}</p>}
+        <button type="button" onClick={() => void signIn()} disabled={submitting || loading} className="mt-7 flex w-full items-center justify-center gap-3 border border-white/20 bg-white px-4 py-3 font-semibold text-[#202124] transition hover:bg-white/90 disabled:opacity-60">
+          <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.2A20 20 0 0 0 24 44Z"/><path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.2H5.8a20 20 0 0 0 0 17.6l6.8-5.2Z"/><path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 5.9 29.5 4 24 4A20 20 0 0 0 5.8 15.2l6.8 5.2C14.2 15.6 18.7 12 24 12Z"/></svg>
+          {submitting ? c.busy : c.google}
+        </button>
         <div className="my-5 flex items-center gap-3 text-xs text-white/35"><span className="h-px flex-1 bg-white/10" /><span>LANE</span><span className="h-px flex-1 bg-white/10" /></div>
         <button type="button" onClick={onContinueAsGuest} className="w-full border border-white/20 px-4 py-3 text-sm font-medium text-white/80 transition hover:border-white/50 hover:text-white">{c.guest}</button>
       </div>

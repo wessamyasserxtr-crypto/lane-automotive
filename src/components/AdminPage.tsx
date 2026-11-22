@@ -4,8 +4,6 @@ import {
   CheckCircle2,
   ClipboardList,
   Download,
-  Eye,
-  EyeOff,
   FileSpreadsheet,
   ImagePlus,
   LayoutDashboard,
@@ -56,7 +54,7 @@ interface AdminPageProps {
   isAuthenticated: boolean;
   authConfigured: boolean;
   authLoading: boolean;
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: () => Promise<void>;
   onLogout: () => void;
   onUpdateCars: (nextCars: CarModel[]) => void;
   onUpdateBookings: (nextBookings: VisitBooking[]) => void;
@@ -220,9 +218,6 @@ export function AdminPage({
   onNavigate,
 }: AdminPageProps) {
   const isAr = lang === 'ar';
-  const [emailInput, setEmailInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [showPasscode, setShowPasscode] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<AdminTab>('overview');
@@ -274,22 +269,16 @@ export function AdminPage({
     return { totalCars, avgPrice, totalBookings: bookings.length, pendingBookings, byType };
   }, [cars, bookings]);
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLoginSubmit = async () => {
     if (!authConfigured) {
-      setLoginError(isAr ? 'تسجيل الدخول يحتاج إعداد اتصال قاعدة البيانات أولًا.' : 'Database connection must be configured first.');
-      return;
-    }
-    if (!emailInput.trim() || !passwordInput) {
-      setLoginError(isAr ? 'اكتب البريد الإلكتروني وكلمة المرور.' : 'Enter your email and password.');
+      setLoginError(isAr ? 'تسجيل الدخول يحتاج إعداد Firebase أولًا.' : 'Firebase must be configured first.');
       return;
     }
     try {
-      await onLogin(emailInput.trim(), passwordInput);
+      await onLogin();
       setLoginError(null);
-      setPasswordInput('');
     } catch {
-      setLoginError(isAr ? 'تعذر تسجيل الدخول. راجع البريد وكلمة المرور أو إعدادات الحساب.' : 'Sign in failed. Check your email, password, or account setup.');
+      setLoginError(isAr ? 'اختاري حساب Google المصرح له بلوحة الإدارة.' : 'Choose the Google account authorized for the admin console.');
     }
   };
 
@@ -584,55 +573,7 @@ export function AdminPage({
               : 'Access the LANE management console to edit inventory, flash deals, bookings, and storefront content.'}
           </p>
 
-          <form onSubmit={handleLoginSubmit} className="mt-6 space-y-4">
-            <div>
-              <label
-                htmlFor="admin-email"
-                className="mb-1.5 block text-xs font-medium text-[#dedbd6]"
-              >
-                {isAr ? 'البريد الإداري' : 'Admin Email'}
-              </label>
-              <input
-                id="admin-email"
-                type="email"
-                dir="ltr"
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                className="font-latin h-11 w-full border border-[#353535] bg-[#0b0b0c] px-3.5 text-sm text-white focus:border-[#ed1c24] focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="admin-password"
-                className="mb-1.5 block text-xs font-medium text-[#dedbd6]"
-              >
-                {isAr ? 'كلمة المرور' : 'Password'}
-              </label>
-              <div className="relative">
-                <input
-                  id="admin-password"
-                  type={showPasscode ? 'text' : 'password'}
-                  dir="ltr"
-                  value={passwordInput}
-                  onChange={(e) => {
-                    setPasswordInput(e.target.value);
-                    setLoginError(null);
-                  }}
-                  placeholder="••••••••"
-                  className="font-latin h-11 w-full border border-[#353535] bg-[#0b0b0c] pe-11 ps-3.5 text-sm text-white focus:border-[#ed1c24] focus:outline-none"
-                />
-                <button
-                  type="button"
-                  aria-label={showPasscode ? 'Hide passcode' : 'Show passcode'}
-                  onClick={() => setShowPasscode((s) => !s)}
-                  className="absolute inset-y-0 end-0 flex w-10 items-center justify-center text-[#8e8983] hover:text-white"
-                >
-                  {showPasscode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
+          <div className="mt-6 space-y-4">
             {loginError && (
               <p role="alert" className="text-xs font-medium text-[#ff7c80]">
                 {loginError}
@@ -640,24 +581,26 @@ export function AdminPage({
             )}
 
             <button
-              type="submit"
+              type="button"
+              onClick={() => void handleLoginSubmit()}
               disabled={authLoading || !authConfigured}
-              className="h-11 w-full bg-[#ed1c24] text-xs font-bold text-white transition-colors hover:bg-[#ff3037] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-11 w-full items-center justify-center gap-3 bg-white text-xs font-bold text-[#202124] transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
+              <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.2A20 20 0 0 0 24 44Z"/><path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.2H5.8a20 20 0 0 0 0 17.6l6.8-5.2Z"/><path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 5.9 29.5 4 24 4A20 20 0 0 0 5.8 15.2l6.8 5.2C14.2 15.6 18.7 12 24 12Z"/></svg>
               {authLoading
                 ? (isAr ? 'جارٍ التحقق…' : 'Checking…')
-                : (isAr ? 'دخول لوحة الإدارة' : 'Sign In to Admin')}
+                : (isAr ? 'الدخول باستخدام Google' : 'Continue with Google')}
             </button>
-          </form>
+          </div>
 
           <div className="mt-6 border border-[#2a2a2d] bg-[#0d0d0f] p-3.5 text-xs text-[#b5b0aa]">
             <div className="font-semibold text-[#d8b789]">
-              {isAr ? 'تسجيل آمن بالبريد الإلكتروني' : 'Secure email sign-in'}
+              {isAr ? 'دخول آمن بحساب Google' : 'Secure Google sign-in'}
             </div>
             <p className="mt-2 text-[11px] text-[#8d8882]">
               {!authConfigured
-                ? (isAr ? 'يلزم ربط مشروع قاعدة البيانات قبل تفعيل الدخول.' : 'Connect the database project before enabling sign-in.')
-                : (isAr ? 'الحسابات ينشئها مسؤول قاعدة البيانات، ولا يوجد تسجيل عام للأدمن.' : 'Admin accounts are provisioned by the database owner; public admin sign-up is disabled.')}
+                ? (isAr ? 'يلزم ربط مشروع Firebase قبل تفعيل الدخول.' : 'Connect the Firebase project before enabling sign-in.')
+                : (isAr ? 'صلاحية الإدارة لبريد wessamy2012@gmail.com فقط.' : 'Admin access is restricted to wessamy2012@gmail.com.')}
             </p>
           </div>
         </div>
