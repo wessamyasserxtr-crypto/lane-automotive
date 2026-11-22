@@ -21,6 +21,7 @@ The current website expects these collections:
 - `showroom_state/primary`: published car catalog and showroom settings; public read, admin write.
 - `visit_bookings/{id}`: public visit requests; only the verified admin may read or change them.
 - `finance_entries/{id}`: accounting ledger in EGP; only the verified admin may read and create entries, with one restricted update allowed to void a posted entry. Entries cannot be edited or deleted, so a correction remains auditable.
+- `crm_leads/{id}`: manually recorded customer enquiries and follow-ups; only the verified admin may read, create, and update records. Deletion is disabled.
 
 The checked-in [`firestore.rules`](firestore.rules) file contains the accounting collection policy. Publish it to Firestore before deploying code that uses a new collection; otherwise the site correctly disables accounting writes. The web app config is public browser configuration; the Firestore security rules enforce access.
 

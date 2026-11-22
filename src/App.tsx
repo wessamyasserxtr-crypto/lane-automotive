@@ -40,6 +40,7 @@ import {
   loadStoredCars,
   loadStoredSettings,
   STORAGE_KEYS,
+  type CustomerLead,
   type ShowroomSettings,
   type VisitBooking,
 } from './data/store';
@@ -109,6 +110,8 @@ export default function App() {
   const [bookings, setBookings] = useState<VisitBooking[]>(() => loadStoredBookings());
   const [financeEntries, setFinanceEntries] = useState<FinanceEntry[]>([]);
   const [financeStatus, setFinanceStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [customerLeads, setCustomerLeads] = useState<CustomerLead[]>([]);
+  const [crmStatus, setCrmStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [settings, setSettings] = useState<ShowroomSettings>(() => loadStoredSettings());
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -159,10 +162,12 @@ export default function App() {
     if (!firestore || !isAdminAuthenticated) {
       setRemoteDataReady(false);
       setFinanceStatus('loading');
+      setCrmStatus('loading');
       return;
     }
     let active = true;
     setFinanceStatus('loading');
+    setCrmStatus('loading');
     void (async () => {
       try {
         const [showroomSnapshot, bookingSnapshot] = await Promise.all([
@@ -188,6 +193,15 @@ export default function App() {
         } catch (error) {
           console.error('Could not load private LANE accounting entries:', error);
           if (active) setFinanceStatus('error');
+        }
+        try {
+          const crmSnapshot = await getDocs(query(collection(firestore, 'crm_leads'), orderBy('updatedAt', 'desc')));
+          if (!active) return;
+          setCustomerLeads(crmSnapshot.docs.map((row) => ({ ...row.data(), id: row.id })) as CustomerLead[]);
+          setCrmStatus('ready');
+        } catch (error) {
+          console.error('Could not load private LANE customer records:', error);
+          if (active) setCrmStatus('error');
         }
       } catch (error) {
         console.error('Could not load LANE data from Firebase:', error);
@@ -407,6 +421,13 @@ export default function App() {
     const { id, ...data } = entry;
     await setDoc(doc(firestore, 'finance_entries', id), data);
     setFinanceEntries((current) => current.map((item) => item.id === id ? entry : item));
+  };
+
+  const handleSaveCustomerLead = async (lead: CustomerLead) => {
+    if (!firestore || !isAdminAuthenticated) throw new Error('Admin access is required.');
+    const { id, ...data } = lead;
+    await setDoc(doc(firestore, 'crm_leads', id), data);
+    setCustomerLeads((current) => [lead, ...current.filter((item) => item.id !== id)]);
   };
 
   const handleAdminLogin = async () => {
@@ -672,6 +693,8 @@ export default function App() {
             bookings={bookings}
             financeEntries={financeEntries}
             financeStatus={financeStatus}
+            customerLeads={customerLeads}
+            crmStatus={crmStatus}
             settings={settings}
             isAuthenticated={isAdminAuthenticated}
             authConfigured={isFirebaseConfigured}
@@ -682,6 +705,7 @@ export default function App() {
             onUpdateBookings={setBookings}
             onAddFinanceEntry={handleAddFinanceEntry}
             onVoidFinanceEntry={handleVoidFinanceEntry}
+            onSaveCustomerLead={handleSaveCustomerLead}
             onUpdateSettings={setSettings}
             onResetFactory={handleResetFactory}
             onNavigate={navigate}

@@ -46,6 +46,22 @@ export interface FinanceEntry {
   voidReason?: string;
 }
 
+export type LeadStage = 'new' | 'contacted' | 'interested' | 'visit' | 'won' | 'lost';
+export type LeadSource = 'whatsapp' | 'phone' | 'showroom' | 'website' | 'referral' | 'other';
+
+export interface CustomerLead {
+  id: string;
+  name: string;
+  phone: string;
+  carId?: string;
+  source: LeadSource;
+  stage: LeadStage;
+  nextFollowUp?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TestimonialItem {
   id: string;
   authorAr: string;

@@ -17,6 +17,7 @@ import {
   Settings2,
   Trash2,
   Upload,
+  UsersRound,
 } from 'lucide-react';
 import {
   CARS,
@@ -33,6 +34,7 @@ import {
   type BookingStatus,
   type FaqItem,
   type FinanceEntry,
+  type CustomerLead,
   type ShowroomSettings,
   type TestimonialItem,
   type VisitBooking,
@@ -47,6 +49,7 @@ import {
 } from '../utils/laneLogic';
 import { CarVisual } from './CarVisual';
 import { FinanceAccountingTab } from './FinanceAccountingTab';
+import { CustomerLeadsTab } from './CustomerLeadsTab';
 
 interface AdminPageProps {
   lang: LangCode;
@@ -55,6 +58,8 @@ interface AdminPageProps {
   bookings: VisitBooking[];
   financeEntries: FinanceEntry[];
   financeStatus: 'loading' | 'ready' | 'error';
+  customerLeads: CustomerLead[];
+  crmStatus: 'loading' | 'ready' | 'error';
   settings: ShowroomSettings;
   isAuthenticated: boolean;
   authConfigured: boolean;
@@ -65,12 +70,13 @@ interface AdminPageProps {
   onUpdateBookings: (nextBookings: VisitBooking[]) => void;
   onAddFinanceEntry: (entry: FinanceEntry) => Promise<void>;
   onVoidFinanceEntry: (entry: FinanceEntry) => Promise<void>;
+  onSaveCustomerLead: (lead: CustomerLead) => Promise<void>;
   onUpdateSettings: (nextSettings: ShowroomSettings) => void;
   onResetFactory: () => void;
   onNavigate: (route: AppRoute) => void;
 }
 
-type AdminTab = 'overview' | 'accounting' | 'cars' | 'bookings' | 'content' | 'settings';
+type AdminTab = 'overview' | 'accounting' | 'customers' | 'cars' | 'bookings' | 'content' | 'settings';
 
 interface CarDraft {
   id: string;
@@ -214,6 +220,8 @@ export function AdminPage({
   bookings,
   financeEntries,
   financeStatus,
+  customerLeads,
+  crmStatus,
   settings,
   isAuthenticated,
   authConfigured,
@@ -224,6 +232,7 @@ export function AdminPage({
   onUpdateBookings,
   onAddFinanceEntry,
   onVoidFinanceEntry,
+  onSaveCustomerLead,
   onUpdateSettings,
   onResetFactory,
   onNavigate,
@@ -638,6 +647,7 @@ export function AdminPage({
   }> = [
     { id: 'overview', label: isAr ? 'نظرة عامة' : 'Overview', icon: LayoutDashboard },
     { id: 'accounting', label: isAr ? 'الحسابات' : 'Accounting', icon: Landmark },
+    { id: 'customers', label: isAr ? 'متابعة العملاء' : 'Customer Desk', icon: UsersRound },
     { id: 'cars', label: isAr ? `السيارات (${cars.length})` : `Cars (${cars.length})`, icon: CarFront },
     {
       id: 'bookings',
@@ -841,6 +851,16 @@ export function AdminPage({
             lang={lang}
             onAddEntry={onAddFinanceEntry}
             onVoidEntry={onVoidFinanceEntry}
+          />
+        )}
+
+        {tab === 'customers' && (
+          <CustomerLeadsTab
+            leads={customerLeads}
+            cars={cars}
+            lang={lang}
+            status={crmStatus}
+            onSaveLead={onSaveCustomerLead}
           />
         )}
 
