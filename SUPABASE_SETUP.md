@@ -15,6 +15,6 @@ The site is static on GitHub Pages, so its database and authentication run in Su
    values ('PASTE-ADMIN-USER-UUID-HERE');
    ```
 
-6. In GitHub, open **Settings → Secrets and variables → Actions** and add repository secrets named `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` with the Project URL and publishable key. Save them, then run **Actions → Deploy LANE Automotive to GitHub Pages → Run workflow** (or push a commit).
+6. The site is already configured with this project's public URL and publishable key. Those values are intended for browser use; access is restricted by the RLS rules created by the migration. Push the configured build to GitHub Pages after creating the admin account. Optional GitHub Actions secrets named `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` can override the defaults if you switch projects.
 
 For local development, copy `.env.example` to `.env.local`, fill in the Supabase URL and publishable key, then run the dev script. The migration lets visitors submit visit requests; only UUIDs in `lane_admin_users` can read bookings or edit the showroom catalog/settings. Admin email/password accounts are created in Supabase and cannot be self-registered from the website.
