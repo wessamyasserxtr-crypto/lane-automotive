@@ -7,7 +7,7 @@ The site is static on GitHub Pages, so its database and authentication run in Su
 1. Create a Supabase project and copy its Project URL and publishable key from **Project Settings → API**.
 2. In **SQL Editor**, run `supabase/migrations/202611220001_lane_admin_and_data.sql`.
 3. In **Authentication → URL Configuration**, set Site URL to `https://wessamyasserxtr-crypto.github.io/lane-automotive/` and add that URL to the allowed redirect URLs.
-4. Turn off public sign-ups in **Authentication → Providers → Email**.
+4. Keep email sign-ups enabled in **Authentication → Providers → Email** so customers can create accounts. Require email confirmation if you want verified addresses; new accounts receive no admin permissions by default.
 5. In **Authentication → Users**, add the admin email and password. Copy the new user's UUID, then run this in SQL Editor with that UUID:
 
    ```sql

@@ -123,7 +123,13 @@ export default function App() {
       const { data, error } = await supabase.rpc('is_lane_admin');
       if (active) setIsAdminAuthenticated(!error && data === true);
     };
-    void supabase.auth.getSession().then(({ data }) => applySession(data.session)).catch(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setWelcomeStep('site');
+        try { sessionStorage.setItem('laneWelcomeSeen', '1'); } catch { /* Ignore */ }
+      }
+      return applySession(data.session);
+    }).catch(() => {
       if (active) setIsAdminAuthenticated(false);
     }).finally(() => {
       if (active) setAuthLoading(false);
@@ -350,8 +356,19 @@ export default function App() {
   };
 
   const handleWelcomeLogin = async (email: string, password: string) => {
-    await handleAdminLogin(email, password);
+    if (!supabase) throw new Error('إعداد تسجيل الدخول غير مكتمل بعد.');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
     setWelcomeStep('recommendation');
+  };
+
+  const handleWelcomeSignup = async (email: string, password: string) => {
+    if (!supabase) throw new Error('إعداد إنشاء الحساب غير مكتمل بعد.');
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
+    if (!data.session) return false;
+    setWelcomeStep('recommendation');
+    return true;
   };
 
   const handleBookVisit = (carId: string) => {
@@ -410,7 +427,7 @@ export default function App() {
     <div className="min-h-screen bg-[#090909] text-[#f5f3ef]">
       <DriftIntro visible={welcomeStep === 'intro'} lang={lang} onFinish={() => setWelcomeStep('login')} />
       {welcomeStep === 'login' && (
-        <WelcomeLogin lang={lang} loading={authLoading} onLogin={handleWelcomeLogin} onContinueAsGuest={() => setWelcomeStep('recommendation')} />
+        <WelcomeLogin lang={lang} loading={authLoading} onLogin={handleWelcomeLogin} onSignup={handleWelcomeSignup} onContinueAsGuest={() => setWelcomeStep('recommendation')} />
       )}
       <QuizGate
         open={gateOpen && route.page !== 'admin'}
@@ -691,23 +708,30 @@ export default function App() {
   );
 }
 
-function WelcomeLogin({ lang, loading, onLogin, onContinueAsGuest }: {
+function WelcomeLogin({ lang, loading, onLogin, onSignup, onContinueAsGuest }: {
   lang: LangCode;
   loading: boolean;
   onLogin: (email: string, password: string) => Promise<void>;
+  onSignup: (email: string, password: string) => Promise<boolean>;
   onContinueAsGuest: () => void;
 }) {
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const isAr = lang === 'ar';
+  const [notice, setNotice] = useState('');
   const c = isAr
-    ? { title: 'أهلاً بك في LANE', subtitle: 'سجّل الدخول للمتابعة، أو تصفح كزائر.', email: 'البريد الإلكتروني', password: 'كلمة المرور', submit: 'تسجيل الدخول', guest: 'المتابعة كزائر', busy: 'جارٍ تسجيل الدخول…', invalid: 'تعذر تسجيل الدخول. راجع البريد وكلمة المرور.' }
-    : { title: 'Welcome to LANE', subtitle: 'Sign in to continue, or browse as a guest.', email: 'Email address', password: 'Password', submit: 'Sign in', guest: 'Continue as guest', busy: 'Signing in…', invalid: 'Could not sign in. Check your email and password.' };
+    ? { title: 'أهلاً بك في LANE', subtitle: 'سجّل الدخول أو أنشئ حساباً للمتابعة.', email: 'البريد الإلكتروني', password: 'كلمة المرور', submit: 'تسجيل الدخول', create: 'إنشاء حساب', switchLogin: 'لديك حساب؟ تسجيل الدخول', switchSignup: 'ليس لديك حساب؟ إنشاء حساب', guest: 'المتابعة كزائر', busy: 'جارٍ التحقق…', invalid: 'تعذر إتمام العملية. راجع البريد وكلمة المرور وحاول مجدداً.', confirm: 'تم إنشاء الحساب. راجع بريدك لتأكيده، ثم سجّل الدخول.' }
+    : { title: 'Welcome to LANE', subtitle: 'Sign in or create an account to continue.', email: 'Email address', password: 'Password', submit: 'Sign in', create: 'Create account', switchLogin: 'Already have an account? Sign in', switchSignup: 'New to LANE? Create an account', guest: 'Continue as guest', busy: 'Please wait…', invalid: 'Could not complete this. Check your email and password.', confirm: 'Account created. Check your email to confirm, then sign in.' };
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setError(''); setSubmitting(true);
-    try { await onLogin(email.trim(), password); } catch { setError(c.invalid); } finally { setSubmitting(false); }
+    setNotice('');
+    try {
+      if (mode === 'login') await onLogin(email.trim(), password);
+      else if (!await onSignup(email.trim(), password)) { setNotice(c.confirm); setMode('login'); }
+    } catch { setError(c.invalid); } finally { setSubmitting(false); }
   };
   return (
     <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[radial-gradient(ellipse_at_70%_12%,#281416_0%,#111_44%,#080809_82%)] px-5 py-10" dir={isAr ? 'rtl' : 'ltr'}>
@@ -718,8 +742,10 @@ function WelcomeLogin({ lang, loading, onLogin, onContinueAsGuest }: {
           <label className="block text-sm text-white/75">{c.email}<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-2 w-full border border-white/15 bg-black/35 px-4 py-3 text-white outline-none focus:border-[#ed1c24]" /></label>
           <label className="block text-sm text-white/75">{c.password}<input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-2 w-full border border-white/15 bg-black/35 px-4 py-3 text-white outline-none focus:border-[#ed1c24]" /></label>
           {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
-          <button type="submit" disabled={submitting || loading} className="w-full bg-[#ed1c24] px-4 py-3 font-semibold text-white transition hover:bg-red-600 disabled:opacity-60">{submitting ? c.busy : c.submit}</button>
+          <button type="submit" disabled={submitting || loading} className="w-full bg-[#ed1c24] px-4 py-3 font-semibold text-white transition hover:bg-red-600 disabled:opacity-60">{submitting ? c.busy : mode === 'login' ? c.submit : c.create}</button>
         </form>
+        {notice && <p role="status" className="mt-4 text-sm text-emerald-400">{notice}</p>}
+        <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setNotice(''); }} className="mt-4 w-full text-sm text-white/65 underline decoration-white/25 underline-offset-4 hover:text-white">{mode === 'login' ? c.switchSignup : c.switchLogin}</button>
         <div className="my-5 flex items-center gap-3 text-xs text-white/35"><span className="h-px flex-1 bg-white/10" /><span>LANE</span><span className="h-px flex-1 bg-white/10" /></div>
         <button type="button" onClick={onContinueAsGuest} className="w-full border border-white/20 px-4 py-3 text-sm font-medium text-white/80 transition hover:border-white/50 hover:text-white">{c.guest}</button>
       </div>
