@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { ArrowUpRight, Calculator, CalendarCheck, GitCompareArrows, Sparkles } from 'lucide-react';
+import { motion } from 'motion/react';
 import {
   browserLocalPersistence,
   GoogleAuthProvider,
@@ -25,6 +26,7 @@ import {
 } from 'firebase/firestore';
 import {
   CARS,
+  HERO_IMAGE_URL,
   type CarModel,
   type CurrencyCode,
   type LangCode,
@@ -697,32 +699,130 @@ function WelcomeLogin({ lang, loading, onGoogleLogin }: {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState<'create' | 'signin' | null>(null);
   const copy = {
-    ar: { title: 'أهلاً بك في LANE', subtitle: 'أنشئي حسابًا جديدًا أو سجّلي الدخول بحساب Google. أول دخول ينشئ حسابك تلقائيًا.', create: 'إنشاء حساب جديد', signin: 'تسجيل الدخول', hint: 'اختاري حساب Google من النافذة. لو معندكيش حساب، اختاري «إنشاء حساب» هناك.', busy: 'جارٍ فتح Google…', invalid: 'تعذر فتح تسجيل Google. حاولي مرة أخرى أو تواصلي مع إدارة الموقع.' },
-    en: { title: 'Welcome to LANE', subtitle: 'Create an account or sign in with Google. Your account is created automatically the first time.', create: 'Create a new account', signin: 'Sign in', hint: 'Choose a Google account. To create one, select “Create account” in the Google window.', busy: 'Opening Google…', invalid: 'Could not start Google sign-in. Try again or contact the site administrator.' },
-    fr: { title: 'Bienvenue chez LANE', subtitle: 'Créez un compte ou connectez-vous avec Google. Votre compte sera créé automatiquement lors de la première connexion.', create: 'Créer un compte', signin: 'Se connecter', hint: 'Choisissez un compte Google. Pour en créer un, sélectionnez « Créer un compte » dans la fenêtre Google.', busy: 'Ouverture de Google…', invalid: 'Impossible de démarrer la connexion Google. Réessayez ou contactez le site.' },
-    zh: { title: '欢迎来到 LANE', subtitle: '使用 Google 创建账户或登录。首次登录时会自动创建您的账户。', create: '创建新账户', signin: '登录', hint: '选择 Google 账户。要创建账户，请在 Google 弹窗中选择“创建账户”。', busy: '正在打开 Google…', invalid: '无法启动 Google 登录。请重试或联系网站管理员。' },
-    de: { title: 'Willkommen bei LANE', subtitle: 'Erstelle ein Konto oder melde dich mit Google an. Beim ersten Login wird dein Konto automatisch erstellt.', create: 'Neues Konto erstellen', signin: 'Anmelden', hint: 'Wähle ein Google-Konto aus. Um ein Konto zu erstellen, wähle im Google-Fenster „Konto erstellen“.', busy: 'Google wird geöffnet…', invalid: 'Google-Anmeldung konnte nicht gestartet werden. Bitte erneut versuchen oder den Website-Administrator kontaktieren.' },
+    ar: {
+      title: 'أهلاً بك في LANE', subtitle: 'أنشئي حسابًا جديدًا أو سجّلي الدخول بحساب Google. أول دخول ينشئ حسابك تلقائيًا.', create: 'إنشاء حساب جديد', signin: 'تسجيل الدخول', hint: 'اختاري حساب Google من النافذة. لو معندكيش حساب، اختاري «إنشاء حساب» هناك.', busy: 'جارٍ فتح Google…', invalid: 'تعذر فتح تسجيل Google. حاولي مرة أخرى أو تواصلي مع إدارة الموقع.',
+      kicker: 'اختيار أذكى · مشوار أهدى', hero: 'سيارتك الجديدة أقرب مما تتخيّلي.', heroBody: 'اكتشفي سيارات جديدة مختارة، قارني بينها، وابدئي رحلتك مع LANE.', model: 'اختيار LANE لهذا الموسم', safe: 'دخول سريع وآمن عبر Google', showroom: 'معرض سيارات جديدة · الشيخ زايد',
+    },
+    en: {
+      title: 'Welcome to LANE', subtitle: 'Create an account or sign in with Google. Your account is created automatically the first time.', create: 'Create a new account', signin: 'Sign in', hint: 'Choose a Google account. To create one, select “Create account” in the Google window.', busy: 'Opening Google…', invalid: 'Could not start Google sign-in. Try again or contact the site administrator.',
+      kicker: 'A smarter choice · A smoother drive', hero: 'Your next car is closer than you think.', heroBody: 'Discover a curated selection of new cars, compare your favourites, and start your next journey with LANE.', model: 'LANE seasonal pick', safe: 'Quick, secure Google sign-in', showroom: 'New cars showroom · Sheikh Zayed',
+    },
+    fr: {
+      title: 'Bienvenue chez LANE', subtitle: 'Créez un compte ou connectez-vous avec Google. Votre compte sera créé automatiquement lors de la première connexion.', create: 'Créer un compte', signin: 'Se connecter', hint: 'Choisissez un compte Google. Pour en créer un, sélectionnez « Créer un compte » dans la fenêtre Google.', busy: 'Ouverture de Google…', invalid: 'Impossible de démarrer la connexion Google. Réessayez ou contactez le site.',
+      kicker: 'Un choix plus malin · Une route plus sereine', hero: 'Votre prochaine voiture est plus proche que vous ne le pensez.', heroBody: 'Découvrez une sélection de voitures neuves, comparez vos préférées et commencez votre prochain voyage avec LANE.', model: 'La sélection LANE du moment', safe: 'Connexion Google rapide et sécurisée', showroom: 'Voitures neuves · Sheikh Zayed',
+    },
+    zh: {
+      title: '欢迎来到 LANE', subtitle: '使用 Google 创建账户或登录。首次登录时会自动创建您的账户。', create: '创建新账户', signin: '登录', hint: '选择 Google 账户。要创建账户，请在 Google 弹窗中选择“创建账户”。', busy: '正在打开 Google…', invalid: '无法启动 Google 登录。请重试或联系网站管理员。',
+      kicker: '更明智的选择 · 更轻松的旅程', hero: '您的下一辆新车，比想象中更近。', heroBody: '探索精选新车，比较心仪车型，与 LANE 一起开启新的旅程。', model: 'LANE 本季精选', safe: 'Google 快速安全登录', showroom: '新车展厅 · Sheikh Zayed',
+    },
+    de: {
+      title: 'Willkommen bei LANE', subtitle: 'Erstelle ein Konto oder melde dich mit Google an. Beim ersten Login wird dein Konto automatisch erstellt.', create: 'Neues Konto erstellen', signin: 'Anmelden', hint: 'Wähle ein Google-Konto aus. Um ein Konto zu erstellen, wähle im Google-Fenster „Konto erstellen“.', busy: 'Google wird geöffnet…', invalid: 'Google-Anmeldung konnte nicht gestartet werden. Bitte erneut versuchen oder den Website-Administrator kontaktieren.',
+      kicker: 'Besser wählen · Entspannter fahren', hero: 'Dein nächstes Auto ist näher, als du denkst.', heroBody: 'Entdecke ausgewählte Neuwagen, vergleiche deine Favoriten und starte mit LANE in deine nächste Fahrt.', model: 'Die LANE-Auswahl der Saison', safe: 'Schnelle, sichere Google-Anmeldung', showroom: 'Neuwagen · Sheikh Zayed',
+    },
   }[lang];
+  const rtl = lang === 'ar';
   const continueWithGoogle = async (intent: 'create' | 'signin') => {
     setError(''); setSubmitting(intent);
     try { await onGoogleLogin(); } catch { setError(copy.invalid); setSubmitting(null); }
   };
   return (
-    <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[radial-gradient(ellipse_at_70%_12%,#281416_0%,#111_44%,#080809_82%)] px-5 py-10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-      <div className="w-full max-w-md border border-white/10 bg-[#101012]/95 p-7 shadow-2xl shadow-black/50 sm:p-9">
-        <div className="mb-8 text-center"><div className="font-latin text-5xl font-extrabold tracking-tight text-white">LANE<span className="text-[#ed1c24]">.</span></div><p className="mt-2 text-xs tracking-[0.35em] text-white/50">AUTOMOTIVE</p></div>
-        <h1 className="text-2xl font-bold text-white">{copy.title}</h1><p className="mt-2 text-sm leading-6 text-white/60">{copy.subtitle}</p>
-        {error && <p role="alert" className="mt-5 text-sm text-red-400">{error}</p>}
-        <div className="mt-7 grid gap-3 sm:grid-cols-2">
-          {(['create', 'signin'] as const).map((intent) => (
-            <button key={intent} type="button" onClick={() => void continueWithGoogle(intent)} disabled={submitting !== null || loading} className={intent === 'create'
-              ? 'flex min-h-12 items-center justify-center gap-2 border border-[#ed1c24] bg-[#ed1c24] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#cf1720] disabled:cursor-wait disabled:opacity-60'
-              : 'flex min-h-12 items-center justify-center gap-2 border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-[#202124] transition hover:bg-white/90 disabled:cursor-wait disabled:opacity-60'}>
-              {submitting === intent ? copy.busy : copy[intent]}
-            </button>
-          ))}
-        </div>
-        <p className="mt-4 text-center text-xs leading-5 text-white/45">{copy.hint}</p>
+    <div className="fixed inset-0 z-[90] overflow-y-auto bg-[#070809] text-white" dir="ltr">
+      <motion.img
+        src={HERO_IMAGE_URL}
+        alt=""
+        aria-hidden="true"
+        initial={{ opacity: 0, scale: 1.06 }}
+        animate={{ opacity: 0.72, scale: 1 }}
+        transition={{ duration: 1.2, ease: [0.2, 0.8, 0.2, 1] }}
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
+      />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(4,5,6,.24)_0%,rgba(4,5,6,.56)_42%,rgba(5,6,7,.94)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_18%_55%,rgba(237,28,36,.20),transparent_42%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#ed1c24]/80 to-transparent" />
+
+      <div className="relative mx-auto grid min-h-screen w-full max-w-[1480px] items-center gap-8 px-5 py-7 sm:px-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(420px,.85fr)] lg:gap-12 lg:px-14 lg:py-10">
+        <motion.section
+          dir={rtl ? 'rtl' : 'ltr'}
+          initial={{ opacity: 0, x: rtl ? 24 : -24 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.7, delay: 0.12, ease: [0.2, 0.8, 0.2, 1] }}
+          className="hidden min-h-[74vh] flex-col justify-between py-4 lg:flex"
+        >
+          <div>
+            <div className="font-latin text-5xl font-extrabold tracking-tight text-white">LANE<span className="text-[#ed1c24]">.</span></div>
+            <div className="mt-2 font-latin text-[10px] font-semibold tracking-[0.5em] text-white/55">AUTOMOTIVE</div>
+          </div>
+          <div className="max-w-2xl">
+            <div className="mb-5 flex items-center gap-3 text-[11px] font-semibold tracking-[0.15em] text-white/65">
+              <span className="h-px w-10 bg-[#ed1c24]" />
+              <span>{copy.kicker}</span>
+            </div>
+            <h2 className="max-w-xl text-5xl font-bold leading-[1.15] tracking-tight text-white xl:text-6xl">{copy.hero}</h2>
+            <p className="mt-5 max-w-lg text-base leading-8 text-white/70">{copy.heroBody}</p>
+            <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs text-white/65">
+              <span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#ed1c24]" />{copy.model}</span>
+              <span className="h-4 w-px bg-white/20" />
+              <span>{copy.showroom}</span>
+            </div>
+          </div>
+          <span className="font-latin text-[10px] tracking-[0.3em] text-white/35">FIND YOUR ROAD · 2026</span>
+        </motion.section>
+
+        <motion.section
+          dir={rtl ? 'rtl' : 'ltr'}
+          initial={{ opacity: 0, y: 20, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.7, delay: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
+          className="mx-auto w-full max-w-[500px] lg:mx-0 lg:justify-self-end"
+        >
+          <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-[#0b0c0e]/75 p-6 shadow-[0_32px_100px_rgba(0,0,0,.58)] backdrop-blur-2xl sm:p-9">
+            <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#ed1c24] to-transparent" />
+            <div className="mb-7 flex items-center justify-between gap-4">
+              <div className="lg:hidden">
+                <div className="font-latin text-3xl font-extrabold tracking-tight text-white">LANE<span className="text-[#ed1c24]">.</span></div>
+                <div className="mt-1 font-latin text-[8px] font-semibold tracking-[0.42em] text-white/45">AUTOMOTIVE</div>
+              </div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 font-latin text-[10px] tracking-[0.12em] text-white/55">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#ed1c24]" />
+                LANE · ACCOUNT
+              </span>
+              <span dir="ltr" className="font-latin text-xs font-semibold tracking-[0.12em] text-white/30">01 / 02</span>
+            </div>
+
+            <span className="font-latin text-[10px] font-semibold tracking-[0.25em] text-[#ed1c24]">{copy.kicker}</span>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">{copy.title}</h1>
+            <p className="mt-3 text-sm leading-7 text-white/60">{copy.subtitle}</p>
+            {error && <p role="alert" className="mt-5 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p>}
+
+            <div className="mt-8 grid gap-3">
+              {(['create', 'signin'] as const).map((intent) => (
+                <motion.button
+                  key={intent}
+                  type="button"
+                  onClick={() => void continueWithGoogle(intent)}
+                  disabled={submitting !== null || loading}
+                  whileHover={{ y: -1, scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  className={intent === 'create'
+                    ? 'group flex min-h-[58px] items-center justify-between gap-3 rounded-xl border border-[#ff353d]/70 bg-[#ed1c24] px-5 text-sm font-bold text-white shadow-lg shadow-[#ed1c24]/15 transition-colors hover:bg-[#cf1720] disabled:cursor-wait disabled:opacity-60'
+                    : 'group flex min-h-[58px] items-center justify-between gap-3 rounded-xl border border-white/15 bg-white/[0.045] px-5 text-sm font-semibold text-white transition-colors hover:border-white/35 hover:bg-white/[0.09] disabled:cursor-wait disabled:opacity-60'}
+                >
+                  <span>{submitting === intent ? copy.busy : copy[intent]}</span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm">
+                    <svg aria-hidden="true" viewBox="0 0 48 48" className="h-[18px] w-[18px]"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.2A20 20 0 0 0 24 44Z"/><path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.2H5.8a20 20 0 0 0 0 17.6l6.8-5.2Z"/><path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 5.9 29.5 4 24 4A20 20 0 0 0 5.8 15.2l6.8 5.2C14.2 15.6 18.7 12 24 12Z"/></svg>
+                  </span>
+                </motion.button>
+              ))}
+            </div>
+
+            <p className="mt-4 text-center text-xs leading-6 text-white/45">{copy.hint}</p>
+            <div className="mt-7 flex items-center justify-center gap-2 border-t border-white/10 pt-5 text-[11px] text-white/45">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span>{copy.safe}</span>
+            </div>
+          </div>
+          <p className="mt-5 text-center font-latin text-[9px] tracking-[0.25em] text-white/35 lg:hidden">NEW CARS · SHEIKH ZAYED</p>
+        </motion.section>
       </div>
     </div>
   );
