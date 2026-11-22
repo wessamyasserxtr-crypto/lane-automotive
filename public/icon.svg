@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#090909" />
+  <rect x="36" y="36" width="440" height="440" fill="none" stroke="#242424" stroke-width="6" />
+  <path d="M96 346 H416" stroke="#ed1c24" stroke-width="14" stroke-linecap="square" />
+  <text
+    x="246"
+    y="286"
+    text-anchor="middle"
+    font-family="Manrope, Arial, sans-serif"
+    font-size="136"
+    font-weight="800"
+    letter-spacing="-6"
+    fill="#f5f3ef"
+  >LANE<tspan fill="#ed1c24">.</tspan></text>
+</svg>

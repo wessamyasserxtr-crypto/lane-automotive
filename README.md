@@ -1,29 +1,31 @@
 # LANE Automotive
 
-A multilingual new-car showroom experience for Egypt.
+A multilingual showroom website for new cars in Egypt, with inventory management, comparisons, financing estimates, and a local admin dashboard.
 
-## Open the working preview
+## Live website
 
-Visit **[https://wessamyasserxtr-crypto.github.io/lane-automotive/](https://wessamyasserxtr-crypto.github.io/lane-automotive/)** for the live standalone website preview (GitHub Pages). It includes the complete visual experience and client-side interactions. Internet access is needed for remote car imagery, fonts, and Sketchfab 3D models.
+The `main` branch automatically builds and publishes this React app to [GitHub Pages](https://wessamyasserxtr.github.io/lane-automotive/).
 
-`preview.html` is the same standalone preview at the repository root.
+## Run locally
 
-## Full React project
+Prerequisite: Node.js 22 or later.
 
-The React/Vite source is also included in `src/`. GitHub Pages serves the standalone preview, not the server-powered React app.
-
-Prerequisites: Node.js 22 or later.
-
-1. Run `npm install`.
-2. Copy `.env.example` to `.env.local` and set `GEMINI_API_KEY` for the server-powered AI assistant.
+1. Install dependencies with `npm install` (or `pnpm install`).
+2. Copy `.env.example` to `.env.local` and add `GEMINI_API_KEY` to enable the server assistant.
 3. Run `npm run dev`.
 
-The local app opens at `http://localhost:3000`. Building locally: `npm run build`.
+The local website opens at `http://localhost:3000`.
+
+## Admin dashboard
+
+Open [the admin page](https://wessamyasserxtr.github.io/lane-automotive/#/admin). On first access, create a private passcode with at least 8 characters.
+
+The dashboard currently saves its passcode, vehicle catalog, bookings, and showroom settings in the current browser only. It has no shared server database or server-side authentication; use it as a single-browser demo dashboard.
 
 ## Features
 
-- Arabic, English, French, Chinese, and German interface
-- New-car inventory, favorites, and comparison
-- Vehicle details with selected interactive 3D model embeds
-- Financing estimator and WhatsApp contact for showroom visits
-- Standalone interactive preview at `preview.html`
+- Arabic, English, French, Chinese, and German
+- New-car inventory, favorites, and comparisons
+- Vehicle detail pages and interactive 3D options where a matching model is available
+- Financing estimates and WhatsApp contact for showroom visits
+- Admin controls for vehicles, bookings, FAQs, reviews, and showroom settings

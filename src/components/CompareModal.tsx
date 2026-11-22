@@ -1,156 +1,148 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
-import { CURRENCY_SYMBOLS, formatPrice, type CarModel, type Currency, type Lang } from '../data/cars';
-import { CarImage } from './CarImage';
+import type { CarModel, CurrencyCode, LangCode } from '../data/cars';
+import type { TranslationPack } from '../data/i18n';
+import { formatPriceWithSymbol } from '../utils/laneLogic';
+import { CarVisual } from './CarVisual';
 
 interface CompareModalProps {
-  open: boolean;
   cars: CarModel[];
-  lang: Lang;
-  currency: Currency;
-  t: Record<string, string>;
+  open: boolean;
+  t: TranslationPack;
+  lang: LangCode;
+  currency: CurrencyCode;
   onClose: () => void;
   onSelectCar: (car: CarModel) => void;
 }
 
 export function CompareModal({
-  open,
   cars,
+  open,
+  t,
   lang,
   currency,
-  t,
   onClose,
   onSelectCar,
 }: CompareModalProps) {
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     document.body.style.overflow = 'hidden';
-    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = '';
-      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keydown', onKey);
     };
   }, [open, onClose]);
 
   if (!open || cars.length < 2) return null;
 
-  const sym = CURRENCY_SYMBOLS[currency][lang];
-
-  const rows = [
+  const rows: { label: string; getValue: (c: CarModel) => string }[] = [
     {
-      label: t.compareRowCategory,
-      render: (c: CarModel) => c.categoryLabel,
+      label: t.modalPrice,
+      getValue: (c) => formatPriceWithSymbol(c.priceEgp, currency, lang),
     },
-    {
-      label: t.compareRowPrice,
-      render: (c: CarModel) => (
-        <span dir="ltr" className="font-latin font-bold tabular-nums text-[#d8b789]">
-          {formatPrice(c.priceEgp, currency, lang)} {sym}
-        </span>
-      ),
-    },
-    {
-      label: t.compareRowEngine,
-      render: (c: CarModel) => c.engine[lang],
-    },
-    {
-      label: t.compareRowPower,
-      render: (c: CarModel) => <span className="font-latin font-semibold">{c.power}</span>,
-    },
-    {
-      label: t.compareRowTorque,
-      render: (c: CarModel) => <span className="font-latin">{c.torque}</span>,
-    },
-    {
-      label: t.compareRowGearbox,
-      render: (c: CarModel) => c.gearbox[lang],
-    },
-    {
-      label: t.compareRowSeats,
-      render: (c: CarModel) => <span className="font-latin tabular-nums">{c.seats}</span>,
-    },
-    {
-      label: t.compareRowFeatures,
-      render: (c: CarModel) => (
-        <ul className="space-y-1 text-xs text-[#c7c2bc]">
-          {c.features[lang].map((f) => (
-            <li key={f}>· {f}</li>
-          ))}
-        </ul>
-      ),
-    },
+    { label: t.modalCapacity, getValue: (c) => c.engine[lang] },
+    { label: t.modalPower, getValue: (c) => c.power },
+    { label: t.modalTorque, getValue: (c) => c.torque },
+    { label: t.modalGearbox, getValue: (c) => c.gearbox[lang] },
+    { label: t.modalDrive, getValue: (c) => c.drive },
+    { label: t.modalSeats, getValue: (c) => c.seats },
   ];
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md sm:p-6"
       role="dialog"
       aria-modal="true"
-      aria-label={t.compareModalTitle}
-      onClick={onClose}
+      aria-labelledby="compare-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
     >
       <div
-        className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-sm border border-[#333] bg-[#111111] p-5 sm:p-8"
-        onClick={(e) => e.stopPropagation()}
-      >
+        onClick={onClose}
+        className="fixed inset-0 bg-black/85 backdrop-blur-md"
+        aria-hidden="true"
+      />
+
+      <div className="relative z-10 max-h-[90vh] w-full max-w-5xl overflow-y-auto border border-[#393939] bg-[#101010] p-6 sm:p-8">
         <div className="flex items-start justify-between gap-4 border-b border-[#292929] pb-5">
           <div>
-            <h2 className="text-xl font-bold text-[#f5f3ef] sm:text-2xl">{t.compareModalTitle}</h2>
-            <p className="mt-1 text-xs text-[#aaa6a1]">{t.compareModalSub}</p>
+            <h2
+              id="compare-modal-title"
+              className="text-2xl font-bold text-[#f5f3ef]"
+            >
+              {t.compareTitle}
+            </h2>
+            <p className="mt-1 text-xs text-[#aaa6a1]">{t.compareSubtitle}</p>
           </div>
+
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#3a3a3a] text-white hover:border-[#ed1c24] hover:bg-[#ed1c24]"
+            aria-label={t.compareClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/40 text-white hover:border-[#ed1c24] hover:bg-[#ed1c24]"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[600px] border-collapse text-start text-sm">
+          <table className="w-full min-w-[560px] border-collapse text-start text-xs">
             <thead>
-              <tr>
-                <th className="w-40 border-b border-[#292929] p-3 text-start text-xs font-semibold text-[#8f8a84]" />
+              <tr className="border-b border-[#292929]">
+                <th className="w-36 py-3 pe-4 text-start font-medium text-[#8d8882]" />
                 {cars.map((car) => (
-                  <th key={car.id} className="border-b border-[#292929] p-3 text-start align-top">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onSelectCar(car);
-                      }}
-                      className="group block w-full text-start"
-                    >
-                      <CarImage
-                        src={car.img}
-                        alt={car.name}
-                        label={car.name}
-                        className="h-28 w-full rounded-sm object-cover"
-                      />
-                      <span className="mt-2.5 block font-latin text-base font-bold text-[#f5f3ef] group-hover:text-[#ed1c24]">
-                        {car.name}
-                      </span>
-                    </button>
+                  <th key={car.id} className="px-3 pb-5 text-start align-top">
+                    <CarVisual
+                      car={car}
+                      src={car.img}
+                      alt={car.name}
+                      className="mb-3 h-32 w-full"
+                    />
+                    <span className="block text-base font-bold text-[#f5f3ef]">
+                      {car.name}
+                    </span>
+                    <span className="font-latin mt-0.5 block text-[11px] font-normal text-[#aaa6a1]">
+                      {car.categoryLabel[lang]}
+                    </span>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.label} className="border-b border-[#222]">
-                  <td className="p-3 text-xs font-semibold text-[#aaa6a1]">{row.label}</td>
+                <tr key={row.label} className="border-b border-[#1f1f1f]">
+                  <th className="py-3.5 pe-4 text-start font-semibold text-[#aaa6a1]">
+                    {row.label}
+                  </th>
                   {cars.map((car) => (
-                    <td key={car.id} className="p-3 align-top text-xs text-[#ece8e1]">
-                      {row.render(car)}
+                    <td
+                      key={car.id}
+                      className="font-latin tabular-nums px-3 py-3.5 font-semibold text-[#f5f3ef]"
+                    >
+                      {row.getValue(car)}
                     </td>
                   ))}
                 </tr>
               ))}
+              <tr>
+                <td className="py-4" />
+                {cars.map((car) => (
+                  <td key={car.id} className="px-3 py-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onSelectCar(car);
+                      }}
+                      className="h-9 bg-[#ed1c24] px-4 text-xs font-bold text-white hover:bg-[#ff3037]"
+                    >
+                      {t.cardAskDetails}
+                    </button>
+                  </td>
+                ))}
+              </tr>
             </tbody>
           </table>
         </div>

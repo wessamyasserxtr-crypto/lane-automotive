@@ -6,6 +6,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // The website is published at /lane-automotive/ on GitHub Pages.
+    base: process.env.GITHUB_PAGES === 'true' ? '/lane-automotive/' : '/',
     plugins: [
       react(),
       tailwindcss(),

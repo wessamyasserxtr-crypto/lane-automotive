@@ -1,437 +1,475 @@
-import { type PointerEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, GitCompare, Heart, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
-import { motion, useReducedMotion } from 'motion/react';
+import { useState } from 'react';
+import { ArrowUpRight, Camera, GitCompareArrows, Heart, Search } from 'lucide-react';
+import type { CarModel, CurrencyCode, LangCode } from '../data/cars';
+import type { TranslationPack } from '../data/i18n';
 import {
-  CARS,
-  CURRENCY_SYMBOLS,
-  formatPrice,
-  type CarModel,
-  type CarType,
-  type Currency,
-  type Lang,
-} from '../data/cars';
-import { CarImage } from './CarImage';
+  formatPriceWithSymbol,
+  getEffectivePriceEgp,
+  searchAndSortCars,
+  type AppRoute,
+  type InventoryFilter,
+  type SortOption,
+} from '../utils/laneLogic';
+import { CarVisual } from './CarVisual';
 
 interface InventorySectionProps {
-  lang: Lang;
-  currency: Currency;
-  t: Record<string, string>;
+  cars: CarModel[];
+  t: TranslationPack;
+  lang: LangCode;
+  currency: CurrencyCode;
+  filter: InventoryFilter;
   favorites: string[];
   compareIds: string[];
-  recommendedIds: string[];
-  onToggleFavorite: (id: string) => void;
-  onToggleCompare: (id: string) => void;
+  recommendedCarId: string | null;
+  previewLimit?: number;
+  onFilterChange: (filter: InventoryFilter) => void;
+  onToggleFavorite: (carId: string) => void;
+  onToggleCompare: (carId: string) => void;
+  onOpenCompare: () => void;
   onClearCompare: () => void;
-  onClearRecommendations: () => void;
-  onOpenCompareModal: () => void;
-  onOpenConcierge: () => void;
-  onSelectCar: (car: CarModel) => void;
-}
-
-type FilterValue = 'all' | 'recommended' | CarType;
-type SortValue = 'default' | 'price-asc' | 'price-desc' | 'power-desc';
-
-function tiltCard(event: PointerEvent<HTMLElement>) {
-  if (event.pointerType !== 'mouse') return;
-  const rect = event.currentTarget.getBoundingClientRect();
-  const x = (event.clientX - rect.left) / rect.width - 0.5;
-  const y = (event.clientY - rect.top) / rect.height - 0.5;
-  event.currentTarget.style.setProperty('--card-tilt-x', `${-y * 5}deg`);
-  event.currentTarget.style.setProperty('--card-tilt-y', `${x * 7}deg`);
-}
-
-function resetCardTilt(event: PointerEvent<HTMLElement>) {
-  event.currentTarget.style.setProperty('--card-tilt-x', '0deg');
-  event.currentTarget.style.setProperty('--card-tilt-y', '0deg');
+  onOpenCar: (car: CarModel) => void;
+  onNavigate: (route: AppRoute) => void;
 }
 
 export function InventorySection({
+  cars,
+  t,
   lang,
   currency,
-  t,
+  filter,
   favorites,
   compareIds,
-  recommendedIds,
+  recommendedCarId,
+  previewLimit,
+  onFilterChange,
   onToggleFavorite,
   onToggleCompare,
+  onOpenCompare,
   onClearCompare,
-  onClearRecommendations,
-  onOpenCompareModal,
-  onOpenConcierge,
-  onSelectCar,
+  onOpenCar,
+  onNavigate,
 }: InventorySectionProps) {
-  const [filter, setFilter] = useState<FilterValue>('all');
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortValue>('default');
-  const reduceMotion = useReducedMotion();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sort, setSort] = useState<SortOption>('featured');
+  const [expandedAll, setExpandedAll] = useState(false);
+  const [selectedColorByCar, setSelectedColorByCar] = useState<Record<string, number | undefined>>({});
+  const isAr = lang === 'ar';
 
-  useEffect(() => {
-    if (filter === 'recommended' && recommendedIds.length === 0) {
-      setFilter('all');
-    }
-  }, [filter, recommendedIds]);
+  const filteredCars = searchAndSortCars(cars, {
+    filter,
+    favoriteIds: favorites,
+    searchQuery,
+    sort,
+    lang,
+  });
 
-  const filteredCars = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const list = CARS.filter((car) => {
-      if (filter === 'recommended') {
-        if (!recommendedIds.includes(car.id)) return false;
-      } else if (filter !== 'all' && car.type !== filter) {
-        return false;
-      }
-      if (!q) return true;
-      const hay = [
-        car.name,
-        car.categoryLabel,
-        car.engine[lang],
-        car.gearbox[lang],
-        ...car.features[lang],
-        ...car.quickSpecs[lang],
-      ]
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(q);
-    });
+  const visibleCars =
+    previewLimit && !expandedAll
+      ? filteredCars.slice(0, previewLimit)
+      : filteredCars;
 
-    if (sort === 'price-asc') return [...list].sort((a, b) => a.priceEgp - b.priceEgp);
-    if (sort === 'price-desc') return [...list].sort((a, b) => b.priceEgp - a.priceEgp);
-    if (sort === 'power-desc') return [...list].sort((a, b) => b.horsepower - a.horsepower);
-
-    if (recommendedIds.length > 0) {
-      return [...list].sort((a, b) => {
-        const ia = recommendedIds.indexOf(a.id);
-        const ib = recommendedIds.indexOf(b.id);
-        if (ia === -1 && ib === -1) return 0;
-        if (ia === -1) return 1;
-        if (ib === -1) return -1;
-        return ia - ib;
-      });
-    }
-
-    return list;
-  }, [filter, search, sort, lang, recommendedIds]);
-
-  const compareCars = useMemo(
-    () => compareIds.map((id) => CARS.find((c) => c.id === id)).filter((c): c is CarModel => Boolean(c)),
-    [compareIds]
-  );
-
-  const filterButtons: { value: FilterValue; label: string }[] = [
-    { value: 'all', label: t.filterAll },
-    ...(recommendedIds.length > 0 ? [{ value: 'recommended' as FilterValue, label: t.filterRecommended }] : []),
-    { value: 'suv', label: t.filterSuv },
-    { value: 'sedan', label: t.filterSedan },
-    { value: 'electric', label: t.filterElectric },
+  const filterButtons: { id: InventoryFilter; label: string }[] = [
+    { id: 'all', label: t.filterAll },
+    { id: 'suv', label: t.filterSuv },
+    { id: 'sedan', label: t.filterSedan },
+    { id: 'electric', label: t.filterElectric },
+    {
+      id: 'favorites',
+      label: `${t.filterFavorites} (${favorites.length})`,
+    },
   ];
 
+  const isFavoritesEmpty = filter === 'favorites' && filteredCars.length === 0;
+
   return (
-    <section id="inventory" className="bg-[#0d0d0d] py-20 lg:py-28">
-      <div className="mx-auto max-w-[1440px] px-5 sm:px-[6%]">
-        {/* Section Header */}
-        <div className="flex flex-col justify-between gap-6 border-b border-[#242424] pb-8 lg:flex-row lg:items-end">
+    <section id="inventory" className="bg-[#0d0d0d] py-20 px-[6%] lg:px-[8%]">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-col justify-between gap-6 border-b border-[#242424] pb-8 md:flex-row md:items-end">
           <div>
-            <p className="font-latin text-xs font-semibold tracking-wider text-[#ed1c24]">
+            <p className="font-latin text-xs font-bold tracking-[0.18em] text-[#ed1c24] uppercase">
               {t.inventoryKicker}
             </p>
-            <h2
-              className="mt-2 font-bold tracking-tight text-[#f5f3ef]"
-              style={{ fontSize: 'clamp(1.85rem, 3.6vw, 3.1rem)', textWrap: 'balance' }}
-            >
+            <h2 className="mt-3 text-balance text-3xl font-bold tracking-tight text-[#f5f3ef] sm:text-5xl">
               {t.inventoryTitle}
             </h2>
           </div>
-          <p className="max-w-md text-sm leading-relaxed text-[#aaa6a1]">{t.inventoryDesc}</p>
+          <p className="max-w-sm text-xs leading-relaxed text-[#aaa6a1] sm:text-sm">
+            {t.inventoryDesc}
+          </p>
         </div>
 
-        {/* Filter, Search & Sort Toolbar */}
-        <div className="mt-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
+        {/* Search + Sort Bar on Full Catalog View */}
+        {!previewLimit && (
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 start-3.5 h-4 w-4 -translate-y-1/2 text-[#7c7771]" />
+              <label htmlFor="catalog-search" className="sr-only">
+                {t.searchPlaceholder}
+              </label>
+              <input
+                id="catalog-search"
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t.searchPlaceholder}
+                className="h-11 w-full border border-[#303034] bg-[#141416] pe-4 ps-10 text-xs text-white placeholder-[#7c7771] focus:border-[#ed1c24] focus:outline-none"
+              />
+            </div>
+
+            <select
+              aria-label="Sort models"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortOption)}
+              className="h-11 border border-[#303034] bg-[#141416] px-4 text-xs text-[#f5f3ef] focus:border-[#ed1c24] focus:outline-none"
+            >
+              <option value="featured">{t.sortFeatured}</option>
+              <option value="price-asc">{t.sortPriceAsc}</option>
+              <option value="price-desc">{t.sortPriceDesc}</option>
+            </select>
+          </div>
+        )}
+
+        {/* Filter Bar + Compare Action */}
+        <div className="mt-6 mb-8 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Car category filter">
             {filterButtons.map((btn) => {
-              const active = filter === btn.value;
-              const isRecFilter = btn.value === 'recommended';
+              const active = filter === btn.id;
               return (
                 <button
-                  key={btn.value}
+                  key={btn.id}
                   type="button"
-                  onClick={() => setFilter(btn.value)}
-                  className={`inline-flex h-10 items-center gap-1.5 rounded-sm border px-4 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => onFilterChange(btn.id)}
+                  className={`h-10 whitespace-nowrap border px-4 text-xs font-semibold transition-colors ${
                     active
                       ? 'border-[#ed1c24] bg-[#ed1c24] text-white'
-                      : isRecFilter
-                        ? 'border-[#d8b789]/60 bg-[#1a1510] text-[#d8b789] hover:border-[#ed1c24] hover:text-white'
-                        : 'border-[#2f2f2f] bg-[#141414] text-[#c7c2bc] hover:border-[#ed1c24] hover:text-white'
+                      : 'border-[#353535] bg-transparent text-[#c4c0ba] hover:border-[#ed1c24]/70 hover:text-white'
                   }`}
                 >
-                  {isRecFilter && <Sparkles className="h-3.5 w-3.5" />}
-                  <span>{btn.label}</span>
+                  {btn.label}
                 </button>
               );
             })}
+          </div>
 
-            {recommendedIds.length > 0 && (
+          {compareIds.length > 0 && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={onClearRecommendations}
-                className="inline-flex h-10 items-center gap-1 rounded-sm border border-[#2f2f2f] bg-transparent px-3 text-[11px] font-medium text-[#aaa6a1] transition-colors hover:border-white hover:text-white whitespace-nowrap"
+                disabled={compareIds.length < 2}
+                onClick={onOpenCompare}
+                className="inline-flex h-10 items-center gap-2 whitespace-nowrap bg-[#ed1c24] px-4 text-xs font-bold text-white transition-colors hover:bg-[#ff3037] disabled:cursor-not-allowed disabled:bg-[#3a1d1f] disabled:text-[#aaa]"
               >
-                <X className="h-3 w-3" />
-                <span>{t.clearRecommendations}</span>
+                <GitCompareArrows className="h-4 w-4" />
+                <span>
+                  {t.compareSelectedBtn} ({compareIds.length}/3)
+                </span>
               </button>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1 sm:w-72">
-              <Search className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-[#8f8a84] ltr:left-3.5 rtl:right-3.5" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t.searchPlaceholder}
-                className="h-10 w-full rounded-sm border border-[#2f2f2f] bg-[#141414] text-xs text-[#f5f3ef] placeholder-[#7f7a74] outline-none transition-colors focus:border-[#ed1c24] ltr:pl-10 ltr:pr-8 rtl:pr-10 rtl:pl-8"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  aria-label="Clear search"
-                  className="absolute top-1/2 -translate-y-1/2 text-[#8f8a84] hover:text-white ltr:right-2.5 rtl:left-2.5"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-
-            <div className="relative flex items-center">
-              <SlidersHorizontal className="pointer-events-none absolute h-3.5 w-3.5 text-[#8f8a84] ltr:left-3 rtl:right-3" />
-              <select
-                aria-label="Sort cars"
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortValue)}
-                className="h-10 w-full rounded-sm border border-[#2f2f2f] bg-[#141414] text-xs text-[#f5f3ef] outline-none focus:border-[#ed1c24] ltr:pl-9 ltr:pr-4 rtl:pr-9 rtl:pl-4 sm:w-auto"
-              >
-                <option value="default">{t.sortDefault}</option>
-                <option value="price-asc">{t.sortPriceAsc}</option>
-                <option value="price-desc">{t.sortPriceDesc}</option>
-                <option value="power-desc">{t.sortPowerDesc}</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Comparison Tray (visible when 1+ cars selected) */}
-        {compareCars.length > 0 && (
-          <div className="mt-6 flex flex-col justify-between gap-4 rounded-sm border border-[#3a2224] bg-[#161112] p-4 sm:flex-row sm:items-center">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-2 text-xs font-semibold text-[#f5f3ef]">
-                <GitCompare className="h-4 w-4 text-[#ed1c24]" />
-                {t.compareTrayTitle} ({compareCars.length}/3):
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                {compareCars.map((car) => (
-                  <span
-                    key={car.id}
-                    className="inline-flex items-center gap-1.5 rounded-sm border border-[#363636] bg-[#111] px-2.5 py-1 text-xs text-[#f5f3ef]"
-                  >
-                    {car.name}
-                    <button
-                      type="button"
-                      onClick={() => onToggleCompare(car.id)}
-                      className="text-[#aaa6a1] hover:text-[#ed1c24]"
-                      aria-label={`Remove ${car.name}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 shrink-0">
               <button
                 type="button"
                 onClick={onClearCompare}
-                className="h-9 rounded-sm border border-[#333] px-3 text-xs text-[#bbb] transition-colors hover:border-white hover:text-white whitespace-nowrap"
+                className="h-10 whitespace-nowrap border border-[#3a3a3a] px-3 text-xs text-[#aaa6a1] hover:border-white hover:text-white"
               >
-                {t.clearCompare}
-              </button>
-              <button
-                type="button"
-                onClick={onOpenCompareModal}
-                disabled={compareCars.length < 2}
-                className="h-9 rounded-sm bg-[#ed1c24] px-4 text-xs font-bold text-white transition-colors hover:bg-[#ff2c34] disabled:cursor-not-allowed disabled:opacity-45 whitespace-nowrap"
-              >
-                {t.openCompare} ({compareCars.length})
+                {t.clearCompareBtn}
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Vehicle Cards Grid (3 columns desktop, studio-lit uniform cards) */}
-        {filteredCars.length === 0 ? (
-          <div className="mt-10 rounded-sm border border-[#262626] bg-[#121212] px-6 py-14 text-center">
-            <h3 className="text-lg font-bold text-[#f5f3ef]">{t.noResultsTitle}</h3>
-            <p className="mt-2 text-sm text-[#aaa6a1]">{t.noResultsDesc}</p>
+        {/* Empty State */}
+        {visibleCars.length === 0 ? (
+          <div className="border border-[#2b2b2b] bg-[#141414] px-6 py-14 text-center">
+            <h3 className="text-lg font-bold text-[#f5f3ef]">
+              {isFavoritesEmpty ? t.emptyFavoritesTitle : t.noSearchMatchTitle}
+            </h3>
+            <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-[#aaa6a1]">
+              {isFavoritesEmpty ? t.emptyFavoritesDesc : t.noSearchMatchDesc}
+            </p>
             <button
               type="button"
               onClick={() => {
-                setFilter('all');
-                setSearch('');
-                setSort('default');
+                setSearchQuery('');
+                onFilterChange('all');
               }}
-              className="mt-6 inline-flex h-10 items-center justify-center rounded-sm bg-[#ed1c24] px-5 text-xs font-bold text-white hover:bg-[#ff2c34]"
+              className="mt-6 h-10 bg-[#ed1c24] px-6 text-xs font-bold text-white hover:bg-[#ff3037]"
             >
-              {t.resetFilters}
+              {t.showAllCarsBtn}
             </button>
           </div>
         ) : (
-          <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {filteredCars.map((car, cardIndex) => {
+          <div className="grid grid-cols-1 gap-5" data-testid="inventory-list">
+            {visibleCars.map((car) => {
               const isFav = favorites.includes(car.id);
-              const isCompared = compareIds.includes(car.id);
-              const isRecommended = recommendedIds.includes(car.id);
+              const isComparing = compareIds.includes(car.id);
+              const isRecommended = recommendedCarId === car.id;
+              const effectivePrice = getEffectivePriceEgp(car);
+              const hasDiscount = effectivePrice < car.priceEgp;
+              const chosenColorIdx = selectedColorByCar[car.id];
+              const chosenColor =
+                typeof chosenColorIdx === 'number' && car.colors?.[chosenColorIdx]
+                  ? car.colors[chosenColorIdx]
+                  : null;
+              const status = car.availability || 'available';
+              const statusLabel =
+                status === 'soldout'
+                  ? isAr
+                    ? 'نفدت الكمية'
+                    : 'Sold Out'
+                  : status === 'preorder'
+                    ? isAr
+                      ? 'حجز مسبق'
+                      : 'Pre-Order'
+                    : isAr
+                      ? 'متوفرة للاستلام'
+                      : 'In Stock';
+              const statusClass =
+                status === 'soldout'
+                  ? 'border-[#5a2225] bg-[#1d0c0e]/95 text-[#ff9fa3]'
+                  : status === 'preorder'
+                    ? 'border-[#6d5324] bg-[#1e170a]/95 text-[#f2cf94]'
+                    : 'border-[#255436] bg-[#0d1c12]/95 text-[#9ee6b8]';
 
               return (
-                <motion.article
+                <article
                   key={car.id}
                   id={`car-card-${car.id}`}
-                  initial={reduceMotion ? false : { opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, amount: 0.15 }}
-                  whileHover={reduceMotion ? undefined : { y: -7, scale: 1.008, rotateX: 0.5 }}
-                  transition={{ duration: reduceMotion ? 0 : 0.42, delay: reduceMotion ? 0 : Math.min(cardIndex * 0.055, 0.28), ease: [0.2, 0.8, 0.2, 1] }}
-                  style={{ transformPerspective: 900, transformOrigin: 'center bottom' }}
-                  onPointerMove={reduceMotion ? undefined : tiltCard}
-                  onPointerLeave={resetCardTilt}
-                  className={`group flex flex-col overflow-hidden rounded-sm border bg-gradient-to-br from-[#191a1c] to-[#101113] transition-colors duration-300 ${
+                  data-testid={`car-card-${car.id}`}
+                  className={`group grid grid-cols-1 overflow-hidden border transition-all duration-200 md:grid-cols-[minmax(280px,0.9fr)_1.1fr] ${
                     isRecommended
-                      ? 'border-[#d88789]/85 shadow-[0_0_0_1px_rgba(237,28,36,0.35),0_20px_50px_rgba(237,28,36,0.16)]'
-                      : 'border-[#2b2d30] hover:border-[#ed1c24]/70'
+                      ? 'border-[#ed1c24] bg-gradient-to-br from-[#201415] to-[#111214] shadow-[0_18px_45px_rgba(237,28,36,0.16)]'
+                      : 'border-[#2b2d30] bg-gradient-to-br from-[#191a1c] to-[#101113] hover:border-[#8f373b]'
                   }`}
                 >
-                  <div className="car-card-depth flex min-h-full flex-1 flex-col">
-                  {/* 4:3 Studio-lit Real Vehicle Photography Frame */}
-                  <div className="car-depth-media relative aspect-[4/3] w-full overflow-hidden bg-[radial-gradient(ellipse_at_50%_88%,#393a3d_0%,#181a1c_38%,#0d0e10_78%)]">
+                  {/* Visual Column */}
+                  <div className="relative min-h-[250px] bg-[#181a1c] md:min-h-[300px]">
+                    <CarVisual
+                      car={car}
+                      src={car.img}
+                      forceStudio={chosenColor !== null}
+                      paintColorHex={chosenColor?.hex || car.accentHex}
+                      paintColorName={
+                        chosenColor
+                          ? isAr
+                            ? chosenColor.nameAr
+                            : chosenColor.nameEn
+                          : undefined
+                      }
+                      alt={`${car.name} ${car.year}`}
+                      className="h-full w-full"
+                      imgClassName="transition-transform duration-500 group-hover:scale-[1.03]"
+                    />
+
                     <button
                       type="button"
-                      onClick={() => onSelectCar(car)}
-                      className="block h-full w-full text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ed1c24]"
-                      aria-label={`${t.askDetails}: ${car.name}`}
-                    >
-                      <CarImage
-                        src={car.img}
-                        alt={`${car.name} ${car.year}`}
-                        label={car.name}
-                        className="h-full w-full object-cover object-[center_58%] transition-transform duration-500 group-hover:scale-105"
-                      />
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-85 transition-opacity group-hover:opacity-95" />
-                      <span className="pointer-events-none absolute inset-x-3 bottom-2.5 text-center text-[11px] font-medium text-[#e5e0da] opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                        {t.tapToExplore}
-                      </span>
-                    </button>
-
-                    {/* Single subtle top tag (Match highlight takes precedence when active) */}
-                    <span
-                      className={`pointer-events-none absolute top-3 inline-flex items-center gap-1 rounded-sm px-2.5 py-1 text-[11px] font-semibold backdrop-blur-sm ltr:left-3 rtl:right-3 ${
-                        isRecommended
-                          ? 'bg-[#ed1c24] text-white shadow-[0_4px_16px_rgba(237,28,36,0.4)]'
-                          : 'bg-[#090909]/85 text-[#f5f3ef]'
+                      aria-label={`${isFav ? 'Remove' : 'Save'} ${car.name} to favorites`}
+                      aria-pressed={isFav}
+                      onClick={() => onToggleFavorite(car.id)}
+                      className={`absolute top-3.5 start-3.5 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
+                        isFav
+                          ? 'border-[#ed1c24] bg-[#14090a]/90 text-[#ed1c24]'
+                          : 'border-white/40 bg-black/60 text-white hover:border-white'
                       }`}
                     >
-                      {isRecommended && <Sparkles className="h-3 w-3" />}
-                      <span>{isRecommended ? t.recommendedBadge : car.tag[lang]}</span>
-                    </span>
+                      <Heart
+                        className="h-4 w-4"
+                        fill={isFav ? 'currentColor' : 'none'}
+                      />
+                    </button>
 
-                    {/* Heart & Compare action buttons */}
-                    <div className="absolute top-3 flex items-center gap-2 ltr:right-3 rtl:left-3">
+                    {chosenColor && car.img && (
                       <button
                         type="button"
-                        onClick={() => onToggleCompare(car.id)}
-                        aria-label={isCompared ? t.addedToCompare : t.addToCompare}
-                        title={isCompared ? t.addedToCompare : t.addToCompare}
-                        className={`inline-flex h-9 w-9 items-center justify-center rounded-full border backdrop-blur-sm transition-colors ${
-                          isCompared
-                            ? 'border-[#ed1c24] bg-[#ed1c24] text-white'
-                            : 'border-white/30 bg-[#090909]/75 text-white hover:border-[#ed1c24]'
-                        }`}
+                        onClick={() =>
+                          setSelectedColorByCar((prev) => ({ ...prev, [car.id]: undefined }))
+                        }
+                        className="absolute bottom-3.5 start-3.5 z-20 inline-flex h-8 items-center gap-1.5 border border-white/30 bg-black/75 px-2.5 text-[10px] font-semibold text-white hover:border-[#ed1c24]"
                       >
-                        <GitCompare className="h-4 w-4" />
+                        <Camera className="h-3 w-3" />
+                        <span>{isAr ? 'الصورة الحقيقية' : 'Real Photo'}</span>
                       </button>
+                    )}
 
-                      <button
-                        type="button"
-                        onClick={() => onToggleFavorite(car.id)}
-                        aria-label={isFav ? t.savedFavorite : t.saveFavorite}
-                        title={isFav ? t.savedFavorite : t.saveFavorite}
-                        className={`inline-flex h-9 w-9 items-center justify-center rounded-full border backdrop-blur-sm transition-colors ${
-                          isFav
-                            ? 'border-[#ed1c24] bg-[#090909]/90 text-[#ed1c24]'
-                            : 'border-white/30 bg-[#090909]/75 text-white hover:border-[#ed1c24]'
-                        }`}
+                    <div className="absolute top-3.5 end-3.5 z-20 flex flex-col items-end gap-1.5">
+                      <span
+                        className={`border px-2.5 py-1 text-[10px] font-bold tracking-wide ${statusClass}`}
                       >
-                        <Heart className={`h-4 w-4 ${isFav ? 'fill-[#ed1c24]' : ''}`} />
-                      </button>
+                        {statusLabel}
+                      </span>
+                      {hasDiscount && (
+                        <span className="bg-[#ed1c24] px-2.5 py-1 text-[10px] font-bold text-white">
+                          {car.dealLabel?.[lang] || (isAr ? 'عرض خاص' : 'Flash Deal')}
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Card Body */}
-                  <div className="car-depth-info flex flex-1 flex-col justify-between p-5">
+                  {/* Info Column */}
+                  <div className="flex flex-col justify-between p-6 sm:p-8 lg:p-10">
                     <div>
-                      <div className="flex items-center justify-between gap-2 font-latin text-[11px] font-semibold tracking-wider text-[#aaa6a1]">
-                        <span>{car.categoryLabel}</span>
-                        <span className="tabular-nums">{car.year}</span>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold tracking-wider text-[#b6b0a8]">
+                        <span>
+                          {car.categoryLabel[lang]} ·{' '}
+                          <span className="font-latin tabular-nums">{car.year}</span>
+                        </span>
+                        <span className="text-[#d8b789]">
+                          {isRecommended ? t.recommendedBadge : car.tag[lang]}
+                        </span>
                       </div>
 
-                      <h3 className="mt-2 font-latin text-xl font-bold text-[#f5f3ef]">
-                        <button
-                          type="button"
-                          onClick={() => onSelectCar(car)}
-                          className="text-start transition-colors hover:text-[#ed1c24]"
-                        >
-                          {car.name}
-                        </button>
+                      <h3 className="mt-3 text-2xl font-bold text-[#f5f3ef] sm:text-3xl">
+                        {car.name}
                       </h3>
 
-                      {/* Unboxed clean metadata with typographic dot separators */}
-                      <p className="mt-2.5 text-xs text-[#c0bcb6]">
-                        {car.quickSpecs[lang].join(' · ')}
+                      <p className="mt-3 text-xs leading-relaxed text-[#b2ada7] sm:text-sm">
+                        {car.story[lang]}
                       </p>
+
+                      <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-[#2d2e32] pb-5 text-xs text-[#d1cdc7]">
+                        {car.specs[lang].map((spec, i) => (
+                          <span key={`${spec}-${i}`} className="inline-flex items-center gap-2">
+                            {i > 0 && (
+                              <span aria-hidden="true" className="text-[#ed1c24]">
+                                ·
+                              </span>
+                            )}
+                            <span>{spec}</span>
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Interactive Color Swatches Row directly on Card */}
+                      {car.colors && car.colors.length > 0 && (
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-medium text-[#9b9690]">
+                            {isAr ? 'جرّب اللون:' : 'Try Paint:'}
+                          </span>
+                          {car.colors.map((col, cIdx) => {
+                            const isActiveSwatch =
+                              chosenColorIdx === cIdx ||
+                              (chosenColorIdx === undefined && !car.img && cIdx === 0);
+                            return (
+                              <button
+                                key={col.nameEn}
+                                type="button"
+                                aria-label={`${car.name} — ${isAr ? col.nameAr : col.nameEn}`}
+                                aria-pressed={isActiveSwatch}
+                                title={isAr ? col.nameAr : col.nameEn}
+                                onClick={() =>
+                                  setSelectedColorByCar((prev) => ({
+                                    ...prev,
+                                    [car.id]: cIdx,
+                                  }))
+                                }
+                                className={`h-5 w-5 rounded-full border transition-transform hover:scale-110 ${
+                                  isActiveSwatch
+                                    ? 'ring-2 ring-[#ed1c24] ring-offset-2 ring-offset-[#121214] border-white'
+                                    : 'border-white/40'
+                                }`}
+                                style={{ backgroundColor: col.hex }}
+                              />
+                            );
+                          })}
+                          {chosenColor && (
+                            <span className="text-[11px] font-semibold text-[#d8b789]">
+                              {isAr ? chosenColor.nameAr : chosenColor.nameEn}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#262626] pt-4">
-                      <span dir="ltr" className="font-latin text-sm font-semibold tabular-nums text-[#aaa6a1]">
-                        {formatPrice(car.priceEgp, currency, lang)} {CURRENCY_SYMBOLS[currency][lang]}
-                      </span>
+                    <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <span className="block text-[11px] text-[#9b9690]">
+                          {t.cardPriceLabel}
+                        </span>
+                        <div className="mt-0.5 flex flex-wrap items-baseline gap-2.5">
+                          <strong
+                            dir="ltr"
+                            className={`font-latin tabular-nums text-xl font-bold sm:text-2xl ${
+                              hasDiscount ? 'text-[#ed1c24]' : 'text-[#f5f3ef]'
+                            }`}
+                          >
+                            {formatPriceWithSymbol(effectivePrice, currency, lang)}
+                          </strong>
+                          {hasDiscount && (
+                            <span
+                              dir="ltr"
+                              className="font-latin tabular-nums text-xs text-[#8f8a84] line-through"
+                            >
+                              {formatPriceWithSymbol(car.priceEgp, currency, lang)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => onSelectCar(car)}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-[#ed1c24] px-3.5 text-xs font-bold text-white transition-colors hover:bg-[#ff2c34] whitespace-nowrap"
-                      >
-                        <span>{t.askDetails}</span>
-                        <ArrowUpRight className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onToggleCompare(car.id)}
+                          aria-pressed={isComparing}
+                          className={`h-10 whitespace-nowrap border px-3.5 text-xs font-medium transition-colors ${
+                            isComparing
+                              ? 'border-[#d8b789] bg-[#2a2319] text-[#f5dec0]'
+                              : 'border-[#3a3b3f] bg-transparent text-[#d4d0ca] hover:border-white hover:text-white'
+                          }`}
+                        >
+                          {isComparing ? t.removeCompare : t.addToCompare}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onOpenCar(car)}
+                          className="h-10 whitespace-nowrap border border-[#444] px-3.5 text-xs font-medium text-[#f5f3ef] transition-colors hover:border-[#ed1c24] hover:text-[#ff9ea2]"
+                        >
+                          {t.cardAskDetails}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onNavigate({ page: 'car-detail', carId: car.id })}
+                          className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap bg-[#ed1c24] px-4 text-xs font-bold text-white transition-colors hover:bg-[#ff3037]"
+                        >
+                          <span>{t.openFullPage}</span>
+                          <ArrowUpRight className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  </div>
-                </motion.article>
+                </article>
               );
             })}
           </div>
         )}
 
-        {/* Inventory Footer Concierge Prompt */}
-        <div className="mt-10 flex justify-center">
+        <div className="mt-10 flex flex-wrap justify-center gap-3">
+          {previewLimit && filteredCars.length > visibleCars.length && (
+            <button
+              type="button"
+              onClick={() => setExpandedAll(true)}
+              className="inline-flex h-11 items-center bg-[#ed1c24] px-7 text-xs font-bold text-white transition-colors hover:bg-[#ff3037]"
+            >
+              {t.viewFullCatalog} ({filteredCars.length})
+            </button>
+          )}
           <button
             type="button"
-            onClick={onOpenConcierge}
-            className="inline-flex h-11 items-center gap-2 rounded-sm border border-[#3a3a3a] bg-[#141414] px-6 text-xs font-semibold text-[#f5f3ef] transition-colors hover:border-[#ed1c24] hover:text-white"
+            onClick={() => onNavigate({ page: 'cars' })}
+            className="inline-flex h-11 items-center border border-[#ed1c24]/60 px-6 text-xs font-semibold text-[#f5f3ef] transition-colors hover:bg-[#ed1c24] hover:text-white"
           >
-            <Sparkles className="h-3.5 w-3.5 text-[#ed1c24]" />
-            <span>{t.gateHeading}</span>
+            {isAr ? 'صفحة المعرض الكاملة والبحث' : 'Open Full Showroom & Search'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate({ page: 'quiz' })}
+            className="inline-flex h-11 items-center border border-white/40 px-6 text-xs font-medium text-[#f5f3ef] transition-colors hover:border-[#ed1c24] hover:text-[#ff9ea2]"
+          >
+            {t.findMatch}
           </button>
         </div>
       </div>
     </section>
   );
 }
+

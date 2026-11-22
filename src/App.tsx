@@ -1,454 +1,558 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Calculator, CarFront, GitCompare, Headphones } from 'lucide-react';
-import { CARS, type CarModel, type Currency, type Lang } from './data/cars';
-import { DICTIONARY } from './data/i18n';
-import { Navbar } from './components/Navbar';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { useEffect, useState } from 'react';
+import { ArrowUpRight, Calculator, CalendarCheck, GitCompareArrows, Sparkles } from 'lucide-react';
+import {
+  CARS,
+  type CarModel,
+  type CurrencyCode,
+  type LangCode,
+} from './data/cars';
+import { TRANSLATIONS } from './data/i18n';
+import {
+  DEFAULT_SETTINGS,
+  INITIAL_BOOKINGS,
+  loadAdminPasscode,
+  loadStoredBookings,
+  loadStoredCars,
+  loadStoredSettings,
+  STORAGE_KEYS,
+  type ShowroomSettings,
+  type VisitBooking,
+} from './data/store';
+import {
+  buildHashForRoute,
+  parseRouteFromHash,
+  type AppRoute,
+  type InventoryFilter,
+} from './utils/laneLogic';
+import { Header } from './components/Header';
+import { QuizGate } from './components/QuizGate';
 import { HeroSection } from './components/HeroSection';
 import { InventorySection } from './components/InventorySection';
-import { QuizSection } from './components/QuizSection';
-import { FinanceSection } from './components/FinanceSection';
-import { LaneAiSection } from './components/LaneAiSection';
-import { LocationContactSection } from './components/LocationContactSection';
+import { SmartQuizSection } from './components/SmartQuizSection';
+import {
+  ExperienceSection,
+  FinanceCalculatorSection,
+} from './components/ExperienceAndFinanceSection';
+import { AiAssistantSection } from './components/AiAssistantSection';
+import { SiteFooter, VisitSection } from './components/LocationAndFooter';
 import { CarDetailModal } from './components/CarDetailModal';
 import { CompareModal } from './components/CompareModal';
-import { GarageDrawer } from './components/GarageDrawer';
-import { DriftIntro } from './components/DriftIntro';
+import { CarDetailPage } from './components/CarDetailPage';
+import { ComparePage } from './components/ComparePage';
+import { AdminPage } from './components/AdminPage';
+import { TrustAndFaqSection } from './components/TrustAndFaqSection';
 
-import { ConciergeGate } from './components/ConciergeGate';
-
-const STORAGE_FAV_KEY = 'lane_saved_garage_v1';
-const STORAGE_LANG_KEY = 'lane_lang_v1';
-const STORAGE_CURRENCY_KEY = 'lane_currency_v1';
-const SESSION_GATE_SEEN_KEY = 'lane_gate_seen_v1';
+function shouldSkipGateInitially(): boolean {
+  if (typeof window === 'undefined') return true;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('autostart') === '1' || params.get('browse') === '1') {
+    return true;
+  }
+  const initialRoute = parseRouteFromHash(window.location.hash);
+  if (initialRoute.page !== 'home') {
+    return true;
+  }
+  try {
+    return sessionStorage.getItem('laneGateSeen') === '1';
+  } catch {
+    return false;
+  }
+}
 
 export default function App() {
-  const [lang, setLang] = useState<Lang>(() => {
+  const [lang, setLang] = useState<LangCode>('ar');
+  const [currency, setCurrency] = useState<CurrencyCode>('EGP');
+  const [route, setRoute] = useState<AppRoute>(() =>
+    typeof window !== 'undefined'
+      ? parseRouteFromHash(window.location.hash)
+      : { page: 'home' },
+  );
+  const [gateOpen, setGateOpen] = useState<boolean>(() => !shouldSkipGateInitially());
+
+  const [cars, setCars] = useState<CarModel[]>(() => loadStoredCars());
+  const [bookings, setBookings] = useState<VisitBooking[]>(() => loadStoredBookings());
+  const [settings, setSettings] = useState<ShowroomSettings>(() => loadStoredSettings());
+  const [adminPasscode, setAdminPasscode] = useState<string>(() => loadAdminPasscode());
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_LANG_KEY) as Lang | null;
-      return saved && saved in DICTIONARY ? saved : 'ar';
+      return sessionStorage.getItem(STORAGE_KEYS.adminSession) === '1';
     } catch {
-      return 'ar';
+      return false;
     }
   });
 
-  const [currency, setCurrency] = useState<Currency>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_CURRENCY_KEY) as Currency | null;
-      return saved && ['EGP', 'USD', 'EUR', 'GBP', 'CNY'].includes(saved) ? saved : 'EGP';
-    } catch {
-      return 'EGP';
-    }
-  });
-
+  const [filter, setFilter] = useState<InventoryFilter>('all');
   const [favorites, setFavorites] = useState<string[]>(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_FAV_KEY);
-      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+      const raw = localStorage.getItem(STORAGE_KEYS.favorites);
+      return raw ? (JSON.parse(raw) as string[]) : [];
     } catch {
       return [];
     }
   });
-
-  const [showIntro, setShowIntro] = useState(true);
-  const [showGate, setShowGate] = useState(false);
-  const [gatePendingAfterIntro, setGatePendingAfterIntro] = useState<boolean>(() => {
-    try {
-      if (new URLSearchParams(window.location.search).get('browse') === '1') return false;
-      return sessionStorage.getItem(SESSION_GATE_SEEN_KEY) !== '1';
-    } catch {
-      return true;
-    }
-  });
-  const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
   const [compareIds, setCompareIds] = useState<string[]>([]);
-  const [selectedCar, setSelectedCar] = useState<CarModel | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
-  const [garageOpen, setGarageOpen] = useState(false);
-  const [toastMsg, setToastMsg] = useState('');
+  const [activeCar, setActiveCar] = useState<CarModel | null>(null);
+  const [recommendedCarId, setRecommendedCarId] = useState<string | null>(null);
+  const [visitCarId, setVisitCarId] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // Financing calculator state
-  const [financeCarId, setFinanceCarId] = useState<string>(CARS[0].id);
-  const [downPaymentPct, setDownPaymentPct] = useState<number>(30);
-  const [months, setMonths] = useState<number>(60);
-  const [annualRatePct, setAnnualRatePct] = useState<number>(17.5);
-
-  const t = DICTIONARY[lang];
+  const t = TRANSLATIONS[lang];
 
   useEffect(() => {
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-    try {
-      localStorage.setItem(STORAGE_LANG_KEY, lang);
-    } catch {
-      // Ignore storage errors in restricted environments
-    }
   }, [lang]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_CURRENCY_KEY, currency);
-    } catch {
-      // Ignore storage errors
-    }
-  }, [currency]);
+    const onHashChange = () => {
+      const parsed = parseRouteFromHash(window.location.hash);
+      setRoute(parsed);
+      if (parsed.page === 'admin') {
+        setGateOpen(false);
+      }
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_FAV_KEY, JSON.stringify(favorites));
+      localStorage.setItem(STORAGE_KEYS.cars, JSON.stringify(cars));
     } catch {
-      // Ignore storage errors
+      // Ignore storage failures
+    }
+  }, [cars]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.bookings, JSON.stringify(bookings));
+    } catch {
+      // Ignore storage failures
+    }
+  }, [bookings]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+    } catch {
+      // Ignore storage failures
+    }
+  }, [settings]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(favorites));
+    } catch {
+      // Ignore storage failures
     }
   }, [favorites]);
 
+  const navigate = (nextRoute: AppRoute) => {
+    const nextHash = buildHashForRoute(nextRoute);
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    } else {
+      setRoute(nextRoute);
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    if (nextRoute.page === 'admin') {
+      setGateOpen(false);
+    }
+  };
+
   const showToast = (msg: string) => {
     setToastMsg(msg);
+    window.setTimeout(() => setToastMsg(null), 2600);
   };
 
-  useEffect(() => {
-    if (!toastMsg) return;
-    const timer = setTimeout(() => setToastMsg(''), 3000);
-    return () => clearTimeout(timer);
-  }, [toastMsg]);
-
-  const markGateSeen = () => {
-    try {
-      sessionStorage.setItem(SESSION_GATE_SEEN_KEY, '1');
-    } catch {
-      // Ignore storage errors
-    }
+  const handleToggleFavorite = (carId: string) => {
+    setFavorites((prev) =>
+      prev.includes(carId) ? prev.filter((id) => id !== carId) : [...prev, carId],
+    );
   };
 
-  const handleIntroFinish = () => {
-    setShowIntro(false);
-    if (gatePendingAfterIntro) {
-      setGatePendingAfterIntro(false);
-      setShowGate(true);
-    }
-  };
-
-  const handleCloseGate = () => {
-    markGateSeen();
-    setShowGate(false);
-  };
-
-  const handleApplyMatches = (matchedIds: string[], topCar: CarModel, jumpToInventory: boolean) => {
-    markGateSeen();
-    setRecommendedIds(matchedIds);
-    setFinanceCarId(topCar.id);
-    setShowGate(false);
-
-    if (jumpToInventory) {
-      setTimeout(() => {
-        const target =
-          matchedIds.length > 0
-            ? document.getElementById(`car-card-${topCar.id}`) || document.getElementById('inventory')
-            : document.getElementById('inventory');
-        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 180);
-    }
-  };
-
-  const handleQuizMatchesComputed = (matchedIds: string[], topCar: CarModel) => {
-    setRecommendedIds(matchedIds);
-    setFinanceCarId(topCar.id);
-  };
-
-  const toggleFavorite = (id: string) => {
-    setFavorites((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
-
-  const toggleCompare = (id: string) => {
-    if (!compareIds.includes(id) && compareIds.length === 1) setCompareOpen(true);
+  const handleToggleCompare = (carId: string) => {
     setCompareIds((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.includes(carId)) {
+        return prev.filter((id) => id !== carId);
+      }
       if (prev.length >= 3) {
-        showToast(t.maxCompareToast);
+        showToast(
+          lang === 'ar'
+            ? 'يمكن مقارنة 3 سيارات كحد أقصى في نفس الوقت'
+            : 'You can compare up to 3 cars at once',
+        );
         return prev;
       }
-      return [...prev, id];
+      return [...prev, carId];
     });
   };
 
-  const quickCompare = (id: string) => {
-    const alreadySelected = compareIds.includes(id);
-    const hasOtherCar = compareIds.some((selectedId) => selectedId !== id);
-    if (!alreadySelected && compareIds.length >= 3) {
-      showToast(t.maxCompareToast);
-      return;
-    }
-    if (!alreadySelected) setCompareIds((prev) => [...prev, id]);
-    if (hasOtherCar) setCompareOpen(true);
+  const handleSetCompareSlot = (slotIndex: number, carId: string) => {
+    setCompareIds((prev) => {
+      const next = [
+        prev[0] || cars[0]?.id || '',
+        prev[1] || cars[1]?.id || '',
+        prev[2] || '',
+      ];
+      next[slotIndex] = carId;
+      return next.filter(Boolean);
+    });
   };
 
-  const savedCars = useMemo(
-    () => favorites.map((id) => CARS.find((c) => c.id === id)).filter((c): c is CarModel => Boolean(c)),
-    [favorites]
-  );
+  const handleGateComplete = (topCarId?: string) => {
+    setGateOpen(false);
+    try {
+      sessionStorage.setItem('laneGateSeen', '1');
+    } catch {
+      // Ignore
+    }
+    if (topCarId) {
+      setRecommendedCarId(topCarId);
+      setFilter('all');
+      navigate({ page: 'cars' });
+    }
+  };
 
-  const compareCars = useMemo(
-    () => compareIds.map((id) => CARS.find((c) => c.id === id)).filter((c): c is CarModel => Boolean(c)),
-    [compareIds]
-  );
+  const handleGateSkip = () => {
+    setGateOpen(false);
+    try {
+      sessionStorage.setItem('laneGateSeen', '1');
+    } catch {
+      // Ignore
+    }
+  };
 
-  const experiencePillars = [
-    { icon: CarFront, title: t.f1, desc: t.f1d },
-    { icon: Calculator, title: t.f2, desc: t.f2d },
-    { icon: GitCompare, title: t.f3, desc: t.f3d },
-    { icon: Headphones, title: t.f4, desc: t.f4d },
-  ];
+  const handleBookVisit = (carId: string) => {
+    setActiveCar(null);
+    setVisitCarId(carId);
+    navigate({ page: 'visit' });
+  };
+
+  const handleAddBooking = (booking: VisitBooking) => {
+    setBookings((prev) => [booking, ...prev]);
+  };
+
+  const handleAdminLogin = () => {
+    setIsAdminAuthenticated(true);
+    try {
+      sessionStorage.setItem(STORAGE_KEYS.adminSession, '1');
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminAuthenticated(false);
+    try {
+      sessionStorage.removeItem(STORAGE_KEYS.adminSession);
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleUpdatePasscode = (nextPass: string) => {
+    setAdminPasscode(nextPass);
+    try {
+      if (nextPass) localStorage.setItem(STORAGE_KEYS.adminPasscode, nextPass);
+      else localStorage.removeItem(STORAGE_KEYS.adminPasscode);
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleResetFactory = () => {
+    setCars(CARS);
+    setBookings(INITIAL_BOOKINGS);
+    setSettings(DEFAULT_SETTINGS);
+  };
+
+  const compareCars = cars.filter((c) => compareIds.includes(c.id));
+  const detailCar =
+    route.page === 'car-detail'
+      ? cars.find((c) => c.id === route.carId) || null
+      : null;
 
   return (
     <div className="min-h-screen bg-[#090909] text-[#f5f3ef]">
-      <DriftIntro visible={showIntro} lang={lang} onFinish={handleIntroFinish} />
-
-      <ConciergeGate
-        open={showGate}
+      <QuizGate
+        open={gateOpen && route.page !== 'admin'}
+        cars={cars}
+        t={t}
         lang={lang}
         currency={currency}
-        t={t}
         onLangChange={setLang}
-        onClose={handleCloseGate}
-        onApplyMatches={handleApplyMatches}
-        onInspectCar={(car, matchedIds) => {
-          markGateSeen();
-          setRecommendedIds(matchedIds);
-          setFinanceCarId(car.id);
-          setShowGate(false);
-          setSelectedCar(car);
-        }}
-        onShowToast={showToast}
+        onComplete={handleGateComplete}
+        onSkip={handleGateSkip}
       />
 
-      <Navbar
+      <Header
+        t={t}
         lang={lang}
         currency={currency}
-        savedCount={favorites.length}
-        t={t}
+        currentPage={route.page}
+        settings={settings}
+        isAdminAuthenticated={isAdminAuthenticated}
         onLangChange={setLang}
         onCurrencyChange={setCurrency}
-        onOpenGarage={() => setGarageOpen(true)}
+        onNavigate={navigate}
       />
 
       <main>
-        <HeroSection
-          lang={lang}
-          sceneActive={!showIntro && !showGate && !selectedCar}
-          t={t}
-          onReplayIntro={() => setShowIntro(true)}
-          onOpenConcierge={() => setShowGate(true)}
-          onSelectCar={setSelectedCar}
-        />
+        {route.page === 'home' && (
+          <>
+            <HeroSection
+              t={t}
+              lang={lang}
+              settings={settings}
+              carCount={cars.length}
+              onNavigate={navigate}
+            />
 
-        {/* Editorial Ticker Strip */}
-        <div className="relative overflow-hidden bg-[#ed1c24] py-3" aria-hidden="true">
-          <div className="marquee-track flex w-max items-center gap-10 whitespace-nowrap font-latin text-xs font-bold tracking-[0.2em] text-white">
-            <span>{t.tickerText}</span>
-            <span>{t.tickerText}</span>
-            <span>{t.tickerText}</span>
-            <span>{t.tickerText}</span>
-          </div>
-        </div>
+            <InventorySection
+              cars={cars}
+              t={t}
+              lang={lang}
+              currency={currency}
+              filter={filter}
+              favorites={favorites}
+              compareIds={compareIds}
+              recommendedCarId={recommendedCarId}
+              previewLimit={6}
+              onFilterChange={setFilter}
+              onToggleFavorite={handleToggleFavorite}
+              onToggleCompare={handleToggleCompare}
+              onOpenCompare={() => navigate({ page: 'compare' })}
+              onClearCompare={() => setCompareIds([])}
+              onOpenCar={setActiveCar}
+              onNavigate={navigate}
+            />
 
-        <InventorySection
-          lang={lang}
-          currency={currency}
-          t={t}
-          favorites={favorites}
-          compareIds={compareIds}
-          recommendedIds={recommendedIds}
-          onToggleFavorite={toggleFavorite}
-          onToggleCompare={toggleCompare}
-          onClearCompare={() => setCompareIds([])}
-          onClearRecommendations={() => setRecommendedIds([])}
-          onOpenCompareModal={() => setCompareOpen(true)}
-          onOpenConcierge={() => setShowGate(true)}
-          onSelectCar={setSelectedCar}
-        />
+            {/* Multi-page Hub Cards */}
+            <section className="border-t border-[#1e1e1e] bg-[#0b0b0b] px-[6%] py-16 lg:px-[8%]">
+              <div className="mx-auto max-w-6xl">
+                <p className="font-latin text-xs font-bold tracking-[0.18em] text-[#ed1c24] uppercase">
+                  {t.quickLinksKicker}
+                </p>
+                <h2 className="mt-2 text-2xl font-bold text-[#f5f3ef] sm:text-3xl">
+                  {t.quickLinksTitle}
+                </h2>
+                <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {[
+                    {
+                      route: { page: 'compare' } as AppRoute,
+                      icon: GitCompareArrows,
+                      title: t.navcompare,
+                      desc: t.compareSubtitle,
+                    },
+                    {
+                      route: { page: 'finance' } as AppRoute,
+                      icon: Calculator,
+                      title: t.navfinance,
+                      desc: t.scheduleTitle,
+                    },
+                    {
+                      route: { page: 'quiz' } as AppRoute,
+                      icon: Sparkles,
+                      title: t.navquiz,
+                      desc: t.aiKicker,
+                    },
+                    {
+                      route: { page: 'visit' } as AppRoute,
+                      icon: CalendarCheck,
+                      title: t.navlocation,
+                      desc: t.visitFormTitle,
+                    },
+                  ].map((hub) => {
+                    const Icon = hub.icon;
+                    return (
+                      <button
+                        key={hub.route.page}
+                        type="button"
+                        onClick={() => navigate(hub.route)}
+                        className="group flex flex-col justify-between border border-[#28282b] bg-[#121214] p-6 text-start transition-colors hover:border-[#ed1c24]"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <Icon className="h-5 w-5 text-[#ed1c24]" />
+                            <ArrowUpRight className="h-4 w-4 text-[#7c7772] transition-colors group-hover:text-white" />
+                          </div>
+                          <h3 className="mt-4 text-base font-bold text-[#f5f3ef]">
+                            {hub.title}
+                          </h3>
+                          <p className="mt-1.5 text-xs leading-relaxed text-[#9b9690]">
+                            {hub.desc}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
 
-        <QuizSection
-          lang={lang}
-          currency={currency}
-          t={t}
-          onSelectCar={setSelectedCar}
-          onMatchesComputed={handleQuizMatchesComputed}
-          onShowToast={showToast}
-        />
+            <ExperienceSection t={t} onNavigate={navigate} />
 
-        {/* Experience Section */}
-        <section id="journey" className="bg-[#090909] py-20 lg:py-24">
-          <div className="mx-auto max-w-[1440px] px-5 sm:px-[6%]">
-            <div className="max-w-2xl">
-              <p className="font-latin text-xs font-semibold tracking-wider text-[#ed1c24]">
-                {t.expKicker}
-              </p>
-              <h2
-                className="mt-3 font-bold leading-tight tracking-tight text-[#f5f3ef]"
-                style={{ fontSize: 'clamp(1.9rem, 4vw, 3.25rem)', textWrap: 'balance' }}
-              >
-                {t.expTitle}
-              </h2>
-              <p className="mt-4 text-sm leading-relaxed text-[#aaa6a1]">{t.expDesc}</p>
-            </div>
+            <TrustAndFaqSection settings={settings} lang={lang} />
 
-            <div className="mt-12 grid grid-cols-1 border-y border-[#262626] sm:grid-cols-2 lg:grid-cols-4">
-              {experiencePillars.map((pillar, idx) => {
-                const Icon = pillar.icon;
-                return (
-                  <div
-                    key={pillar.title}
-                    className={`p-7 ${
-                      idx > 0 ? 'border-t border-[#262626] lg:border-t-0 lg:border-s' : ''
-                    } ${idx === 2 ? 'sm:border-s-0 lg:border-s' : ''} ${
-                      idx === 1 ? 'sm:border-s sm:border-t-0' : ''
-                    }`}
-                  >
-                    <Icon className="h-5 w-5 text-[#ed1c24]" />
-                    <h3 className="mt-4 text-sm font-bold text-[#f5f3ef]">{pillar.title}</h3>
-                    <p className="mt-2 text-xs leading-relaxed text-[#aaa6a1]">{pillar.desc}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
+            <VisitSection
+              cars={cars}
+              settings={settings}
+              t={t}
+              lang={lang}
+              preselectedCarId={visitCarId}
+              onAddBooking={handleAddBooking}
+            />
+          </>
+        )}
 
-        <FinanceSection
-          lang={lang}
-          currency={currency}
-          t={t}
-          selectedCarId={financeCarId}
-          downPaymentPct={downPaymentPct}
-          months={months}
-          annualRatePct={annualRatePct}
-          onCarChange={setFinanceCarId}
-          onDownPaymentChange={setDownPaymentPct}
-          onMonthsChange={setMonths}
-          onRateChange={setAnnualRatePct}
-        />
+        {route.page === 'cars' && (
+          <InventorySection
+            cars={cars}
+            t={t}
+            lang={lang}
+            currency={currency}
+            filter={filter}
+            favorites={favorites}
+            compareIds={compareIds}
+            recommendedCarId={recommendedCarId}
+            onFilterChange={setFilter}
+            onToggleFavorite={handleToggleFavorite}
+            onToggleCompare={handleToggleCompare}
+            onOpenCompare={() => navigate({ page: 'compare' })}
+            onClearCompare={() => setCompareIds([])}
+            onOpenCar={setActiveCar}
+            onNavigate={navigate}
+          />
+        )}
 
-        <LaneAiSection lang={lang} currency={currency} t={t} onSelectCar={setSelectedCar} />
+        {route.page === 'car-detail' && (
+          <CarDetailPage
+            car={detailCar}
+            allCars={cars}
+            settings={settings}
+            t={t}
+            lang={lang}
+            currency={currency}
+            favorites={favorites}
+            compareIds={compareIds}
+            onToggleFavorite={handleToggleFavorite}
+            onToggleCompare={handleToggleCompare}
+            onNavigate={navigate}
+            onBookVisit={handleBookVisit}
+          />
+        )}
 
-        <LocationContactSection
-          lang={lang}
-          t={t}
-        />
+        {route.page === 'compare' && (
+          <ComparePage
+            cars={cars}
+            settings={settings}
+            selectedIds={compareIds}
+            t={t}
+            lang={lang}
+            currency={currency}
+            onSetSlotCar={handleSetCompareSlot}
+            onNavigate={navigate}
+            onBookVisit={handleBookVisit}
+          />
+        )}
+
+        {route.page === 'finance' && (
+          <FinanceCalculatorSection
+            cars={cars}
+            settings={settings}
+            t={t}
+            lang={lang}
+            currency={currency}
+            showScheduleTable
+            onNavigate={navigate}
+          />
+        )}
+
+        {route.page === 'quiz' && (
+          <>
+            <SmartQuizSection
+              cars={cars}
+              settings={settings}
+              t={t}
+              lang={lang}
+              currency={currency}
+              onSelectRecommended={(carId) => setRecommendedCarId(carId)}
+              onOpenCar={(car) => navigate({ page: 'car-detail', carId: car.id })}
+            />
+            <AiAssistantSection cars={cars} t={t} lang={lang} currency={currency} />
+          </>
+        )}
+
+        {route.page === 'visit' && (
+          <VisitSection
+            cars={cars}
+            settings={settings}
+            t={t}
+            lang={lang}
+            preselectedCarId={visitCarId}
+            onAddBooking={handleAddBooking}
+          />
+        )}
+
+        {route.page === 'admin' && (
+          <AdminPage
+            lang={lang}
+            currency={currency}
+            cars={cars}
+            bookings={bookings}
+            settings={settings}
+            adminPasscode={adminPasscode}
+            isAuthenticated={isAdminAuthenticated}
+            onLoginSuccess={handleAdminLogin}
+            onLogout={handleAdminLogout}
+            onUpdateCars={setCars}
+            onUpdateBookings={setBookings}
+            onUpdateSettings={setSettings}
+            onUpdatePasscode={handleUpdatePasscode}
+            onResetFactory={handleResetFactory}
+            onNavigate={navigate}
+          />
+        )}
       </main>
 
-      {/* Quiet Footer */}
-      <footer className="border-t border-[#222] bg-[#070707] py-14">
-        <div className="mx-auto max-w-[1440px] px-5 sm:px-[6%]">
-          <div className="flex flex-col justify-between gap-10 pb-10 md:flex-row">
-            <div>
-              <a href="#home" className="font-latin text-2xl font-extrabold tracking-tight text-[#f5f3ef]">
-                LANE<span className="text-[#ed1c24]">.</span>
-              </a>
-              <p className="mt-3 max-w-xs text-xs leading-relaxed text-[#8b8781]">{t.footerDesc}</p>
-            </div>
+      <SiteFooter t={t} settings={settings} onNavigate={navigate} />
 
-            <div className="flex flex-wrap gap-12">
-              <div>
-                <h3 className="text-xs font-bold text-[#f5f3ef]">{t.footerExplore}</h3>
-                <ul className="mt-3 space-y-2.5 text-xs text-[#9c9790]">
-                  <li>
-                    <a href="#inventory" className="hover:text-white">
-                      {t.navCars}
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#quiz" className="hover:text-white">
-                      {t.heroPrimaryCta}
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#finance" className="hover:text-white">
-                      {t.navFinance}
-                    </a>
-                  </li>
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="text-xs font-bold text-[#f5f3ef]">{t.footerConnect}</h3>
-                <ul className="mt-3 space-y-2.5 text-xs text-[#9c9790]">
-                  <li>
-                    <a
-                      href="https://wa.me/201274555677"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-white"
-                    >
-                      WhatsApp
-                    </a>
-                  </li>
-                  <li>
-                    <a
-                      href="https://www.instagram.com/laneautomotive1/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-white"
-                    >
-                      Instagram
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#location" className="hover:text-white">
-                      {t.navVisit}
-                    </a>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col justify-between gap-3 border-t border-[#1e1e1e] pt-6 text-[11px] text-[#77736e] sm:flex-row">
-            <span className="font-latin">{t.footerRights}</span>
-            <span>{t.footerDisclaimer}</span>
-          </div>
-        </div>
-      </footer>
-
-      {/* Modals & Drawers */}
       <CarDetailModal
-        car={selectedCar}
+        car={activeCar}
+        whatsappDigits={settings.whatsappDigits}
+        t={t}
         lang={lang}
         currency={currency}
-        t={t}
-        onClose={() => setSelectedCar(null)}
-        favorites={favorites}
-        compareIds={compareIds}
-        onToggleFavorite={toggleFavorite}
-        onQuickCompare={quickCompare}
+        onClose={() => setActiveCar(null)}
+        onBookVisit={handleBookVisit}
       />
 
       <CompareModal
-        open={compareOpen}
         cars={compareCars}
+        open={compareOpen}
+        t={t}
         lang={lang}
         currency={currency}
-        t={t}
         onClose={() => setCompareOpen(false)}
-        onSelectCar={(car) => setSelectedCar(car)}
+        onSelectCar={(car) => {
+          setCompareOpen(false);
+          navigate({ page: 'car-detail', carId: car.id });
+        }}
       />
 
-      <GarageDrawer
-        open={garageOpen}
-        cars={savedCars}
-        lang={lang}
-        currency={currency}
-        t={t}
-        onClose={() => setGarageOpen(false)}
-        onRemove={toggleFavorite}
-        onClearAll={() => setFavorites([])}
-        onSelectCar={(car) => setSelectedCar(car)}
-      />
 
-      {/* Toast Notification */}
       {toastMsg && (
         <div
           role="status"
-          aria-live="polite"
-          className="fixed bottom-5 z-50 rounded-sm border border-[#3a3a3a] bg-[#161616] px-4 py-3 text-xs font-medium text-[#f5f3ef] shadow-xl ltr:left-5 rtl:right-5"
+          className="fixed bottom-6 start-6 z-50 border border-[#444] bg-[#151515] px-4 py-3 text-xs text-white shadow-xl"
         >
           {toastMsg}
         </div>
