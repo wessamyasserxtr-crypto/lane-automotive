@@ -34,6 +34,7 @@ import {
 import { TRANSLATIONS } from './data/i18n';
 import {
   DEFAULT_SETTINGS,
+  type FinanceEntry,
   INITIAL_BOOKINGS,
   loadStoredBookings,
   loadStoredCars,
@@ -106,6 +107,8 @@ export default function App() {
 
   const [cars, setCars] = useState<CarModel[]>(() => loadStoredCars());
   const [bookings, setBookings] = useState<VisitBooking[]>(() => loadStoredBookings());
+  const [financeEntries, setFinanceEntries] = useState<FinanceEntry[]>([]);
+  const [financeStatus, setFinanceStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [settings, setSettings] = useState<ShowroomSettings>(() => loadStoredSettings());
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -155,9 +158,11 @@ export default function App() {
   useEffect(() => {
     if (!firestore || !isAdminAuthenticated) {
       setRemoteDataReady(false);
+      setFinanceStatus('loading');
       return;
     }
     let active = true;
+    setFinanceStatus('loading');
     void (async () => {
       try {
         const [showroomSnapshot, bookingSnapshot] = await Promise.all([
@@ -172,6 +177,18 @@ export default function App() {
           ...row.data(),
           id: row.id,
         })) as VisitBooking[]);
+        try {
+          const financeSnapshot = await getDocs(query(collection(firestore, 'finance_entries'), orderBy('occurredOn', 'desc')));
+          if (!active) return;
+          setFinanceEntries(financeSnapshot.docs.map((row) => ({
+            ...row.data(),
+            id: row.id,
+          })) as FinanceEntry[]);
+          setFinanceStatus('ready');
+        } catch (error) {
+          console.error('Could not load private LANE accounting entries:', error);
+          if (active) setFinanceStatus('error');
+        }
       } catch (error) {
         console.error('Could not load LANE data from Firebase:', error);
       } finally {
@@ -190,7 +207,8 @@ export default function App() {
 
   useEffect(() => {
     if (!firestore || !isAdminAuthenticated || !remoteDataReady) return;
-    void Promise.all(bookings.map((booking) => setDoc(doc(firestore, 'visit_bookings', booking.id), {
+    const db = firestore;
+    void Promise.all(bookings.map((booking) => setDoc(doc(db, 'visit_bookings', booking.id), {
       name: booking.name,
       phone: booking.phone,
       carId: booking.carId,
@@ -375,6 +393,20 @@ export default function App() {
         createdAt: booking.createdAt,
       }).catch((error) => console.error('Could not save LANE visit request:', error));
     }
+  };
+
+  const handleAddFinanceEntry = async (entry: FinanceEntry) => {
+    if (!firestore || !isAdminAuthenticated) throw new Error('Admin access is required.');
+    const { id, ...data } = entry;
+    await setDoc(doc(firestore, 'finance_entries', id), data);
+    setFinanceEntries((current) => [entry, ...current.filter((item) => item.id !== id)]);
+  };
+
+  const handleVoidFinanceEntry = async (entry: FinanceEntry) => {
+    if (!firestore || !isAdminAuthenticated) throw new Error('Admin access is required.');
+    const { id, ...data } = entry;
+    await setDoc(doc(firestore, 'finance_entries', id), data);
+    setFinanceEntries((current) => current.map((item) => item.id === id ? entry : item));
   };
 
   const handleAdminLogin = async () => {
@@ -638,6 +670,8 @@ export default function App() {
             currency={currency}
             cars={cars}
             bookings={bookings}
+            financeEntries={financeEntries}
+            financeStatus={financeStatus}
             settings={settings}
             isAuthenticated={isAdminAuthenticated}
             authConfigured={isFirebaseConfigured}
@@ -646,6 +680,8 @@ export default function App() {
             onLogout={handleAdminLogout}
             onUpdateCars={setCars}
             onUpdateBookings={setBookings}
+            onAddFinanceEntry={handleAddFinanceEntry}
+            onVoidFinanceEntry={handleVoidFinanceEntry}
             onUpdateSettings={setSettings}
             onResetFactory={handleResetFactory}
             onNavigate={navigate}

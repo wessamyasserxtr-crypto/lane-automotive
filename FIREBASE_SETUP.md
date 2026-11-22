@@ -20,8 +20,9 @@ The current website expects these collections:
 
 - `showroom_state/primary`: published car catalog and showroom settings; public read, admin write.
 - `visit_bookings/{id}`: public visit requests; only the verified admin may read or change them.
+- `finance_entries/{id}`: accounting ledger in EGP; only the verified admin may read and create entries, with one restricted update allowed to void a posted entry. Entries cannot be edited or deleted, so a correction remains auditable.
 
-The contents of [`firestore.rules`](firestore.rules) are now published to the Firebase database. Republish that file after changing the access policy. The web app config is public browser configuration; the Firestore security rules enforce access.
+The checked-in [`firestore.rules`](firestore.rules) file contains the accounting collection policy. Publish it to Firestore before deploying code that uses a new collection; otherwise the site correctly disables accounting writes. The web app config is public browser configuration; the Firestore security rules enforce access.
 
 Firebase Spark includes a daily Firestore quota (currently 50,000 reads and 20,000 writes per day, plus 1 GiB of stored data). If a Spark quota is reached, Firestore can stop serving requests until the quota resets. No billing account is needed; upgrading to Blaze is intentionally out of scope.
 

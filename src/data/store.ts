@@ -13,6 +13,39 @@ export interface VisitBooking {
   createdAt: string;
 }
 
+export type FinanceEntryType = 'income' | 'expense';
+export type FinanceCategory =
+  | 'car-sale'
+  | 'deposit'
+  | 'commission'
+  | 'other-income'
+  | 'supplier'
+  | 'operations'
+  | 'marketing'
+  | 'salaries'
+  | 'delivery'
+  | 'other-expense';
+export type FinancePaymentMethod = 'cash' | 'bank' | 'wallet' | 'card' | 'other';
+export type FinanceEntryStatus = 'posted' | 'voided';
+
+/** One manually recorded EGP cashbook transaction. Visit requests are not accounting income. */
+export interface FinanceEntry {
+  id: string;
+  type: FinanceEntryType;
+  category: FinanceCategory;
+  amountEgp: number;
+  occurredOn: string;
+  paymentMethod: FinancePaymentMethod;
+  carId?: string;
+  counterparty?: string;
+  reference?: string;
+  notes?: string;
+  status: FinanceEntryStatus;
+  createdAt: string;
+  voidedAt?: string;
+  voidReason?: string;
+}
+
 export interface TestimonialItem {
   id: string;
   authorAr: string;

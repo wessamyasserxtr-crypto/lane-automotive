@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Download,
   FileSpreadsheet,
+  Landmark,
   ImagePlus,
   LayoutDashboard,
   Lock,
@@ -31,6 +32,7 @@ import {
   INITIAL_BOOKINGS,
   type BookingStatus,
   type FaqItem,
+  type FinanceEntry,
   type ShowroomSettings,
   type TestimonialItem,
   type VisitBooking,
@@ -44,12 +46,15 @@ import {
   type AppRoute,
 } from '../utils/laneLogic';
 import { CarVisual } from './CarVisual';
+import { FinanceAccountingTab } from './FinanceAccountingTab';
 
 interface AdminPageProps {
   lang: LangCode;
   currency: CurrencyCode;
   cars: CarModel[];
   bookings: VisitBooking[];
+  financeEntries: FinanceEntry[];
+  financeStatus: 'loading' | 'ready' | 'error';
   settings: ShowroomSettings;
   isAuthenticated: boolean;
   authConfigured: boolean;
@@ -58,12 +63,14 @@ interface AdminPageProps {
   onLogout: () => void;
   onUpdateCars: (nextCars: CarModel[]) => void;
   onUpdateBookings: (nextBookings: VisitBooking[]) => void;
+  onAddFinanceEntry: (entry: FinanceEntry) => Promise<void>;
+  onVoidFinanceEntry: (entry: FinanceEntry) => Promise<void>;
   onUpdateSettings: (nextSettings: ShowroomSettings) => void;
   onResetFactory: () => void;
   onNavigate: (route: AppRoute) => void;
 }
 
-type AdminTab = 'overview' | 'cars' | 'bookings' | 'content' | 'settings';
+type AdminTab = 'overview' | 'accounting' | 'cars' | 'bookings' | 'content' | 'settings';
 
 interface CarDraft {
   id: string;
@@ -205,6 +212,8 @@ export function AdminPage({
   currency,
   cars,
   bookings,
+  financeEntries,
+  financeStatus,
   settings,
   isAuthenticated,
   authConfigured,
@@ -213,6 +222,8 @@ export function AdminPage({
   onLogout,
   onUpdateCars,
   onUpdateBookings,
+  onAddFinanceEntry,
+  onVoidFinanceEntry,
   onUpdateSettings,
   onResetFactory,
   onNavigate,
@@ -626,6 +637,7 @@ export function AdminPage({
     badge?: number;
   }> = [
     { id: 'overview', label: isAr ? 'نظرة عامة' : 'Overview', icon: LayoutDashboard },
+    { id: 'accounting', label: isAr ? 'الحسابات' : 'Accounting', icon: Landmark },
     { id: 'cars', label: isAr ? `السيارات (${cars.length})` : `Cars (${cars.length})`, icon: CarFront },
     {
       id: 'bookings',
@@ -819,6 +831,17 @@ export function AdminPage({
               </div>
             </div>
           </div>
+        )}
+
+        {tab === 'accounting' && (
+          <FinanceAccountingTab
+            entries={financeEntries}
+            status={financeStatus}
+            cars={cars}
+            lang={lang}
+            onAddEntry={onAddFinanceEntry}
+            onVoidEntry={onVoidFinanceEntry}
+          />
         )}
 
         {/* TAB 2: CARS MANAGER (CRUD) */}
