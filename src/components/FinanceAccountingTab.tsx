@@ -230,7 +230,7 @@ export function FinanceAccountingTab({ entries, status, cars, lang, onAddEntry, 
     ? ''
     : status === 'loading'
       ? (isAr ? 'جارٍ تحميل الحسابات الآمنة…' : 'Loading the secure ledger…')
-      : (isAr ? 'قواعد Firebase للحسابات غير منشورة بعد. لا تحفظي أي قيد حتى تفعيل القواعد الجديدة.' : 'The accounting Firestore rules are not published yet. Entries are disabled until the new rules are active.');
+      : (isAr ? 'تعذر تحميل دفتر الحسابات من Firebase. تحققي من اتصال الإنترنت وصلاحيات حساب الأدمن ثم أعيدي تحميل الصفحة.' : 'The accounting ledger could not be loaded from Firebase. Check your connection and admin access, then reload the page.');
 
   return (
     <div className="mt-8 space-y-6">

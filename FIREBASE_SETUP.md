@@ -23,7 +23,7 @@ The current website expects these collections:
 - `finance_entries/{id}`: accounting ledger in EGP; only the verified admin may read and create entries, with one restricted update allowed to void a posted entry. Entries cannot be edited or deleted, so a correction remains auditable.
 - `crm_leads/{id}`: manually recorded customer enquiries and follow-ups; only the verified admin may read, create, and update records. Deletion is disabled.
 
-The checked-in [`firestore.rules`](firestore.rules) file contains the accounting collection policy. Publish it to Firestore before deploying code that uses a new collection; otherwise the site correctly disables accounting writes. The web app config is public browser configuration; the Firestore security rules enforce access.
+The checked-in [`firestore.rules`](firestore.rules) file contains the accounting and CRM collection policies. This version has been published to the `lane-automotive` Firebase project; the active version includes the showroom, visit-booking, accounting, and CRM policies, followed by a deny-all fallback. `firebase.json` and `.firebaserc` point the Firebase CLI at this rules file and project. To publish a later rules update, run `firebase deploy --only firestore:rules` from this directory. Publishing replaces the project's current Firestore rules, so review the full file before deployment. The web app config is public browser configuration; the Firestore security rules enforce access.
 
 Firebase Spark includes a daily Firestore quota (currently 50,000 reads and 20,000 writes per day, plus 1 GiB of stored data). If a Spark quota is reached, Firestore can stop serving requests until the quota resets. No billing account is needed; upgrading to Blaze is intentionally out of scope.
 
