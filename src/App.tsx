@@ -46,6 +46,9 @@ import { CarDetailPage } from './components/CarDetailPage';
 import { ComparePage } from './components/ComparePage';
 import { AdminPage } from './components/AdminPage';
 import { TrustAndFaqSection } from './components/TrustAndFaqSection';
+import { DriftIntro } from './components/DriftIntro';
+
+type WelcomeStep = 'intro' | 'login' | 'recommendation' | 'site';
 
 function shouldSkipGateInitially(): boolean {
   if (typeof window === 'undefined') return true;
@@ -72,7 +75,14 @@ export default function App() {
       ? parseRouteFromHash(window.location.hash)
       : { page: 'home' },
   );
-  const [gateOpen, setGateOpen] = useState<boolean>(() => !shouldSkipGateInitially());
+  const [welcomeStep, setWelcomeStep] = useState<WelcomeStep>(() => {
+    if (typeof window === 'undefined') return 'site';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('autostart') === '1' || params.get('browse') === '1') return 'site';
+    try { return sessionStorage.getItem('laneWelcomeSeen') === '1' ? 'site' : 'intro'; }
+    catch { return 'intro'; }
+  });
+  const gateOpen = welcomeStep === 'recommendation';
 
   const [cars, setCars] = useState<CarModel[]>(() => loadStoredCars());
   const [bookings, setBookings] = useState<VisitBooking[]>(() => loadStoredBookings());
@@ -217,7 +227,7 @@ export default function App() {
       const parsed = parseRouteFromHash(window.location.hash);
       setRoute(parsed);
       if (parsed.page === 'admin') {
-        setGateOpen(false);
+        setWelcomeStep('site');
       }
       window.scrollTo({ top: 0, behavior: 'auto' });
     };
@@ -266,7 +276,7 @@ export default function App() {
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
     if (nextRoute.page === 'admin') {
-      setGateOpen(false);
+      setWelcomeStep('site');
     }
   };
 
@@ -311,7 +321,7 @@ export default function App() {
   };
 
   const handleGateComplete = (topCarId?: string) => {
-    setGateOpen(false);
+    setWelcomeStep('site');
     try {
       sessionStorage.setItem('laneGateSeen', '1');
     } catch {
@@ -325,12 +335,23 @@ export default function App() {
   };
 
   const handleGateSkip = () => {
-    setGateOpen(false);
+    setWelcomeStep('site');
     try {
       sessionStorage.setItem('laneGateSeen', '1');
+      sessionStorage.setItem('laneWelcomeSeen', '1');
     } catch {
       // Ignore
     }
+  };
+
+  const finishWelcome = () => {
+    setWelcomeStep('site');
+    try { sessionStorage.setItem('laneWelcomeSeen', '1'); } catch { /* Ignore */ }
+  };
+
+  const handleWelcomeLogin = async (email: string, password: string) => {
+    await handleAdminLogin(email, password);
+    setWelcomeStep('recommendation');
   };
 
   const handleBookVisit = (carId: string) => {
@@ -387,6 +408,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#090909] text-[#f5f3ef]">
+      <DriftIntro visible={welcomeStep === 'intro'} lang={lang} onFinish={() => setWelcomeStep('login')} />
+      {welcomeStep === 'login' && (
+        <WelcomeLogin lang={lang} loading={authLoading} onLogin={handleWelcomeLogin} onContinueAsGuest={() => setWelcomeStep('recommendation')} />
+      )}
       <QuizGate
         open={gateOpen && route.page !== 'admin'}
         cars={cars}
@@ -394,11 +419,11 @@ export default function App() {
         lang={lang}
         currency={currency}
         onLangChange={setLang}
-        onComplete={handleGateComplete}
+        onComplete={(id) => { handleGateComplete(id); try { sessionStorage.setItem('laneWelcomeSeen', '1'); } catch { /* Ignore */ } }}
         onSkip={handleGateSkip}
       />
 
-      <Header
+      {welcomeStep === 'site' && <Header
         t={t}
         lang={lang}
         currency={currency}
@@ -408,9 +433,9 @@ export default function App() {
         onLangChange={setLang}
         onCurrencyChange={setCurrency}
         onNavigate={navigate}
-      />
+      />}
 
-      <main>
+      {welcomeStep === 'site' && <main>
         {route.page === 'home' && (
           <>
             <HeroSection
@@ -626,11 +651,11 @@ export default function App() {
             onNavigate={navigate}
           />
         )}
-      </main>
+      </main>}
 
-      <SiteFooter t={t} settings={settings} onNavigate={navigate} />
+      {welcomeStep === 'site' && <SiteFooter t={t} settings={settings} onNavigate={navigate} />}
 
-      <CarDetailModal
+      {welcomeStep === 'site' && <CarDetailModal
         car={activeCar}
         whatsappDigits={settings.whatsappDigits}
         t={t}
@@ -638,9 +663,9 @@ export default function App() {
         currency={currency}
         onClose={() => setActiveCar(null)}
         onBookVisit={handleBookVisit}
-      />
+      />}
 
-      <CompareModal
+      {welcomeStep === 'site' && <CompareModal
         cars={compareCars}
         open={compareOpen}
         t={t}
@@ -651,7 +676,7 @@ export default function App() {
           setCompareOpen(false);
           navigate({ page: 'car-detail', carId: car.id });
         }}
-      />
+      />}
 
 
       {toastMsg && (
@@ -662,6 +687,42 @@ export default function App() {
           {toastMsg}
         </div>
       )}
+    </div>
+  );
+}
+
+function WelcomeLogin({ lang, loading, onLogin, onContinueAsGuest }: {
+  lang: LangCode;
+  loading: boolean;
+  onLogin: (email: string, password: string) => Promise<void>;
+  onContinueAsGuest: () => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const isAr = lang === 'ar';
+  const c = isAr
+    ? { title: 'أهلاً بك في LANE', subtitle: 'سجّل الدخول للمتابعة، أو تصفح كزائر.', email: 'البريد الإلكتروني', password: 'كلمة المرور', submit: 'تسجيل الدخول', guest: 'المتابعة كزائر', busy: 'جارٍ تسجيل الدخول…', invalid: 'تعذر تسجيل الدخول. راجع البريد وكلمة المرور.' }
+    : { title: 'Welcome to LANE', subtitle: 'Sign in to continue, or browse as a guest.', email: 'Email address', password: 'Password', submit: 'Sign in', guest: 'Continue as guest', busy: 'Signing in…', invalid: 'Could not sign in. Check your email and password.' };
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setError(''); setSubmitting(true);
+    try { await onLogin(email.trim(), password); } catch { setError(c.invalid); } finally { setSubmitting(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[radial-gradient(ellipse_at_70%_12%,#281416_0%,#111_44%,#080809_82%)] px-5 py-10" dir={isAr ? 'rtl' : 'ltr'}>
+      <div className="w-full max-w-md border border-white/10 bg-[#101012]/95 p-7 shadow-2xl shadow-black/50 sm:p-9">
+        <div className="mb-8 text-center"><div className="font-latin text-5xl font-extrabold tracking-tight text-white">LANE<span className="text-[#ed1c24]">.</span></div><p className="mt-2 text-xs tracking-[0.35em] text-white/50">AUTOMOTIVE</p></div>
+        <h1 className="text-2xl font-bold text-white">{c.title}</h1><p className="mt-2 text-sm text-white/60">{c.subtitle}</p>
+        <form onSubmit={submit} className="mt-7 space-y-4">
+          <label className="block text-sm text-white/75">{c.email}<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-2 w-full border border-white/15 bg-black/35 px-4 py-3 text-white outline-none focus:border-[#ed1c24]" /></label>
+          <label className="block text-sm text-white/75">{c.password}<input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-2 w-full border border-white/15 bg-black/35 px-4 py-3 text-white outline-none focus:border-[#ed1c24]" /></label>
+          {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+          <button type="submit" disabled={submitting || loading} className="w-full bg-[#ed1c24] px-4 py-3 font-semibold text-white transition hover:bg-red-600 disabled:opacity-60">{submitting ? c.busy : c.submit}</button>
+        </form>
+        <div className="my-5 flex items-center gap-3 text-xs text-white/35"><span className="h-px flex-1 bg-white/10" /><span>LANE</span><span className="h-px flex-1 bg-white/10" /></div>
+        <button type="button" onClick={onContinueAsGuest} className="w-full border border-white/20 px-4 py-3 text-sm font-medium text-white/80 transition hover:border-white/50 hover:text-white">{c.guest}</button>
+      </div>
     </div>
   );
 }
