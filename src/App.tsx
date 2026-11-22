@@ -15,7 +15,6 @@ import { TRANSLATIONS } from './data/i18n';
 import {
   DEFAULT_SETTINGS,
   INITIAL_BOOKINGS,
-  loadAdminPasscode,
   loadStoredBookings,
   loadStoredCars,
   loadStoredSettings,
@@ -23,6 +22,7 @@ import {
   type ShowroomSettings,
   type VisitBooking,
 } from './data/store';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
 import {
   buildHashForRoute,
   parseRouteFromHash,
@@ -77,14 +77,9 @@ export default function App() {
   const [cars, setCars] = useState<CarModel[]>(() => loadStoredCars());
   const [bookings, setBookings] = useState<VisitBooking[]>(() => loadStoredBookings());
   const [settings, setSettings] = useState<ShowroomSettings>(() => loadStoredSettings());
-  const [adminPasscode, setAdminPasscode] = useState<string>(() => loadAdminPasscode());
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem(STORAGE_KEYS.adminSession) === '1';
-    } catch {
-      return false;
-    }
-  });
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [remoteDataReady, setRemoteDataReady] = useState(false);
 
   const [filter, setFilter] = useState<InventoryFilter>('all');
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -105,9 +100,117 @@ export default function App() {
   const t = TRANSLATIONS[lang];
 
   useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
+    let active = true;
+    const applySession = async (session: { user: { id: string } } | null) => {
+      if (!session) {
+        if (active) setIsAdminAuthenticated(false);
+        return;
+      }
+      const { data, error } = await supabase.rpc('is_lane_admin');
+      if (active) setIsAdminAuthenticated(!error && data === true);
+    };
+    void supabase.auth.getSession().then(({ data }) => applySession(data.session)).catch(() => {
+      if (active) setIsAdminAuthenticated(false);
+    }).finally(() => {
+      if (active) setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        setIsAdminAuthenticated(false);
+        return;
+      }
+      window.setTimeout(() => { void applySession(session); }, 0);
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || !isAdminAuthenticated) {
+      setRemoteDataReady(false);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const [{ data: showroom, error: showroomError }, { data: bookingRows, error: bookingsError }] = await Promise.all([
+          supabase.from('showroom_state').select('cars,settings').eq('id', 'primary').maybeSingle(),
+          supabase.from('visit_bookings').select('*').order('created_at', { ascending: false }),
+        ]);
+        if (showroomError) throw showroomError;
+        if (bookingsError) throw bookingsError;
+        if (!active) return;
+        if (showroom?.cars) setCars(showroom.cars as CarModel[]);
+        if (showroom?.settings) setSettings(showroom.settings as ShowroomSettings);
+        setBookings((bookingRows || []).map((row) => ({
+          id: row.id,
+          name: row.name,
+          phone: row.phone,
+          carId: row.car_id,
+          date: row.visit_date,
+          status: row.status,
+          notes: row.notes || undefined,
+          createdAt: row.created_at,
+        })) as VisitBooking[]);
+      } catch (error) {
+        console.error('Could not load LANE data from Supabase:', error);
+      } finally {
+        if (active) setRemoteDataReady(true);
+      }
+    })();
+    return () => { active = false; };
+  }, [isAdminAuthenticated]);
+
+  useEffect(() => {
+    if (!supabase || !isAdminAuthenticated || !remoteDataReady) return;
+    void supabase.from('showroom_state').upsert({
+      id: 'primary', cars, settings, updated_at: new Date().toISOString(),
+    }).then(({ error }) => {
+      if (error) console.error('Could not save LANE showroom data:', error);
+    });
+  }, [cars, settings, isAdminAuthenticated, remoteDataReady]);
+
+  useEffect(() => {
+    if (!supabase || !isAdminAuthenticated || !remoteDataReady) return;
+    const rows = bookings.map((booking) => ({
+      id: booking.id,
+      name: booking.name,
+      phone: booking.phone,
+      car_id: booking.carId,
+      visit_date: booking.date,
+      status: booking.status,
+      notes: booking.notes || null,
+      created_at: booking.createdAt,
+    }));
+    if (rows.length) void supabase.from('visit_bookings').upsert(rows).then(({ error }) => {
+      if (error) console.error('Could not save LANE visit bookings:', error);
+    });
+  }, [bookings, isAdminAuthenticated, remoteDataReady]);
+
+  useEffect(() => {
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   }, [lang]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    void supabase.from('showroom_state').select('cars,settings').eq('id', 'primary').maybeSingle()
+      .then(({ data, error }) => {
+        if (error) throw error;
+        if (!active || !data) return;
+        if (data.cars) setCars(data.cars as CarModel[]);
+        if (data.settings) setSettings(data.settings as ShowroomSettings);
+      })
+      .catch((error) => console.error('Could not load public LANE catalog:', error));
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     const onHashChange = () => {
@@ -238,34 +341,36 @@ export default function App() {
 
   const handleAddBooking = (booking: VisitBooking) => {
     setBookings((prev) => [booking, ...prev]);
+    if (supabase) {
+      void supabase.from('visit_bookings').insert({
+        id: booking.id,
+        name: booking.name,
+        phone: booking.phone,
+        car_id: booking.carId,
+        visit_date: booking.date,
+        status: booking.status,
+        notes: booking.notes || null,
+        created_at: booking.createdAt,
+      }).then(({ error }) => {
+        if (error) console.error('Could not save LANE visit request:', error);
+      });
+    }
   };
 
-  const handleAdminLogin = () => {
+  const handleAdminLogin = async (email: string, password: string) => {
+    if (!supabase) throw new Error('إعداد قاعدة البيانات غير مكتمل بعد.');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    const { data: isAdmin, error: roleError } = await supabase.rpc('is_lane_admin');
+    if (roleError || !isAdmin) {
+      await supabase.auth.signOut();
+      throw new Error('الحساب غير مضاف لقائمة مديري LANE.');
+    }
     setIsAdminAuthenticated(true);
-    try {
-      sessionStorage.setItem(STORAGE_KEYS.adminSession, '1');
-    } catch {
-      // Ignore
-    }
   };
 
-  const handleAdminLogout = () => {
-    setIsAdminAuthenticated(false);
-    try {
-      sessionStorage.removeItem(STORAGE_KEYS.adminSession);
-    } catch {
-      // Ignore
-    }
-  };
-
-  const handleUpdatePasscode = (nextPass: string) => {
-    setAdminPasscode(nextPass);
-    try {
-      if (nextPass) localStorage.setItem(STORAGE_KEYS.adminPasscode, nextPass);
-      else localStorage.removeItem(STORAGE_KEYS.adminPasscode);
-    } catch {
-      // Ignore
-    }
+  const handleAdminLogout = async () => {
+    if (supabase) await supabase.auth.signOut();
   };
 
   const handleResetFactory = () => {
@@ -509,14 +614,14 @@ export default function App() {
             cars={cars}
             bookings={bookings}
             settings={settings}
-            adminPasscode={adminPasscode}
             isAuthenticated={isAdminAuthenticated}
-            onLoginSuccess={handleAdminLogin}
+            authConfigured={isSupabaseConfigured}
+            authLoading={authLoading}
+            onLogin={handleAdminLogin}
             onLogout={handleAdminLogout}
             onUpdateCars={setCars}
             onUpdateBookings={setBookings}
             onUpdateSettings={setSettings}
-            onUpdatePasscode={handleUpdatePasscode}
             onResetFactory={handleResetFactory}
             onNavigate={navigate}
           />

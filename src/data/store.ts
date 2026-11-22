@@ -145,16 +145,11 @@ export const INITIAL_BOOKINGS: VisitBooking[] = [
   },
 ];
 
-// No client-side default credential: a passcode embedded in a public bundle is public.
-export const DEFAULT_ADMIN_PASSCODE = '';
-
 export const STORAGE_KEYS = {
   cars: 'lane_catalog_cars_v3',
   bookings: 'lane_visit_bookings_v1',
   settings: 'lane_showroom_settings_v2',
   favorites: 'lane_favorites',
-  adminPasscode: 'lane_admin_passcode_v1',
-  adminSession: 'lane_admin_auth_v1',
 };
 
 export function loadStoredCars(): CarModel[] {
@@ -196,14 +191,6 @@ export function loadStoredSettings(): ShowroomSettings {
     };
   } catch {
     return DEFAULT_SETTINGS;
-  }
-}
-
-export function loadAdminPasscode(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEYS.adminPasscode) || DEFAULT_ADMIN_PASSCODE;
-  } catch {
-    return DEFAULT_ADMIN_PASSCODE;
   }
 }
 

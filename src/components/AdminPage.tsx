@@ -43,7 +43,6 @@ import {
   getEffectivePriceEgp,
   upsertCarInCatalog,
   updateBookingStatusInList,
-  verifyAdminPasscode,
   type AppRoute,
 } from '../utils/laneLogic';
 import { CarVisual } from './CarVisual';
@@ -54,14 +53,14 @@ interface AdminPageProps {
   cars: CarModel[];
   bookings: VisitBooking[];
   settings: ShowroomSettings;
-  adminPasscode: string;
   isAuthenticated: boolean;
-  onLoginSuccess: () => void;
+  authConfigured: boolean;
+  authLoading: boolean;
+  onLogin: (email: string, password: string) => Promise<void>;
   onLogout: () => void;
   onUpdateCars: (nextCars: CarModel[]) => void;
   onUpdateBookings: (nextBookings: VisitBooking[]) => void;
   onUpdateSettings: (nextSettings: ShowroomSettings) => void;
-  onUpdatePasscode: (nextPasscode: string) => void;
   onResetFactory: () => void;
   onNavigate: (route: AppRoute) => void;
 }
@@ -209,20 +208,20 @@ export function AdminPage({
   cars,
   bookings,
   settings,
-  adminPasscode,
   isAuthenticated,
-  onLoginSuccess,
+  authConfigured,
+  authLoading,
+  onLogin,
   onLogout,
   onUpdateCars,
   onUpdateBookings,
   onUpdateSettings,
-  onUpdatePasscode,
   onResetFactory,
   onNavigate,
 }: AdminPageProps) {
   const isAr = lang === 'ar';
-  const [emailInput, setEmailInput] = useState('admin@lane.eg');
-  const [passcodeInput, setPasscodeInput] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [showPasscode, setShowPasscode] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -234,7 +233,6 @@ export function AdminPage({
 
   const [bookingFilter, setBookingFilter] = useState<'all' | BookingStatus>('all');
   const [settingsDraft, setSettingsDraft] = useState<ShowroomSettings>(settings);
-  const [newPasscodeDraft, setNewPasscodeDraft] = useState('');
   const [adminBanner, setAdminBanner] = useState<string | null>(null);
 
   // Content CMS drafts
@@ -276,31 +274,23 @@ export function AdminPage({
     return { totalCars, avgPrice, totalBookings: bookings.length, pendingBookings, byType };
   }, [cars, bookings]);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminPasscode) {
-      const firstPasscode = passcodeInput.trim();
-      if (firstPasscode.length < 8) {
-        setLoginError(isAr ? 'أنشئ رمزًا من 8 أحرف أو أكثر.' : 'Create a passcode with at least 8 characters.');
-        return;
-      }
-      onUpdatePasscode(firstPasscode);
+    if (!authConfigured) {
+      setLoginError(isAr ? 'تسجيل الدخول يحتاج إعداد اتصال قاعدة البيانات أولًا.' : 'Database connection must be configured first.');
+      return;
+    }
+    if (!emailInput.trim() || !passwordInput) {
+      setLoginError(isAr ? 'اكتب البريد الإلكتروني وكلمة المرور.' : 'Enter your email and password.');
+      return;
+    }
+    try {
+      await onLogin(emailInput.trim(), passwordInput);
       setLoginError(null);
-      setPasscodeInput('');
-      onLoginSuccess();
-      return;
+      setPasswordInput('');
+    } catch {
+      setLoginError(isAr ? 'تعذر تسجيل الدخول. راجع البريد وكلمة المرور أو إعدادات الحساب.' : 'Sign in failed. Check your email, password, or account setup.');
     }
-    if (!verifyAdminPasscode(passcodeInput, adminPasscode)) {
-      setLoginError(
-        isAr
-          ? 'رمز الدخول غير صحيح. تأكد من الرمز وحاول مرة أخرى.'
-          : 'Invalid admin passcode. Please verify and try again.',
-      );
-      return;
-    }
-    setLoginError(null);
-    setPasscodeInput('');
-    onLoginSuccess();
   };
 
   const handleOpenAddCar = () => {
@@ -452,10 +442,6 @@ export function AdminPage({
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateSettings(settingsDraft);
-    if (newPasscodeDraft.trim().length >= 4) {
-      onUpdatePasscode(newPasscodeDraft.trim());
-      setNewPasscodeDraft('');
-    }
     showAdminBanner(
       isAr ? 'تم حفظ إعدادات المعرض وتطبيقها على الموقع.' : 'Showroom settings saved and applied live.',
     );
@@ -618,24 +604,22 @@ export function AdminPage({
 
             <div>
               <label
-                htmlFor="admin-passcode"
+                htmlFor="admin-password"
                 className="mb-1.5 block text-xs font-medium text-[#dedbd6]"
               >
-                {!adminPasscode
-                  ? (isAr ? 'أنشئ رمز إدارة (8 أحرف على الأقل)' : 'Create admin passcode (8+ characters)')
-                  : (isAr ? 'رمز الدخول (Passcode)' : 'Admin Passcode')}
+                {isAr ? 'كلمة المرور' : 'Password'}
               </label>
               <div className="relative">
                 <input
-                  id="admin-passcode"
+                  id="admin-password"
                   type={showPasscode ? 'text' : 'password'}
                   dir="ltr"
-                  value={passcodeInput}
+                  value={passwordInput}
                   onChange={(e) => {
-                    setPasscodeInput(e.target.value);
+                    setPasswordInput(e.target.value);
                     setLoginError(null);
                   }}
-                  placeholder={!adminPasscode ? (isAr ? 'أنشئ رمزًا خاصًا' : 'Choose a private passcode') : '••••••••'}
+                  placeholder="••••••••"
                   className="font-latin h-11 w-full border border-[#353535] bg-[#0b0b0c] pe-11 ps-3.5 text-sm text-white focus:border-[#ed1c24] focus:outline-none"
                 />
                 <button
@@ -657,22 +641,23 @@ export function AdminPage({
 
             <button
               type="submit"
-              className="h-11 w-full bg-[#ed1c24] text-xs font-bold text-white transition-colors hover:bg-[#ff3037]"
+              disabled={authLoading || !authConfigured}
+              className="h-11 w-full bg-[#ed1c24] text-xs font-bold text-white transition-colors hover:bg-[#ff3037] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {!adminPasscode
-                ? (isAr ? 'إنشاء الرمز وفتح لوحة التحكم' : 'Create passcode & open dashboard')
-                : (isAr ? 'دخول للوحة التحكم' : 'Sign In to Dashboard')}
+              {authLoading
+                ? (isAr ? 'جارٍ التحقق…' : 'Checking…')
+                : (isAr ? 'دخول لوحة الإدارة' : 'Sign In to Admin')}
             </button>
           </form>
 
           <div className="mt-6 border border-[#2a2a2d] bg-[#0d0d0f] p-3.5 text-xs text-[#b5b0aa]">
             <div className="font-semibold text-[#d8b789]">
-              {isAr ? 'رمز الإدارة:' : 'Admin access:'}
+              {isAr ? 'تسجيل آمن بالبريد الإلكتروني' : 'Secure email sign-in'}
             </div>
             <p className="mt-2 text-[11px] text-[#8d8882]">
-              {isAr
-                ? 'لوحة الإدارة تحفظ إعداداتها في هذا المتصفح فقط، وليست محمية بحساب خادمي.'
-                : 'Admin data and access are stored only in this browser; this is not server-side account security.'}
+              {!authConfigured
+                ? (isAr ? 'يلزم ربط مشروع قاعدة البيانات قبل تفعيل الدخول.' : 'Connect the database project before enabling sign-in.')
+                : (isAr ? 'الحسابات ينشئها مسؤول قاعدة البيانات، ولا يوجد تسجيل عام للأدمن.' : 'Admin accounts are provisioned by the database owner; public admin sign-up is disabled.')}
             </p>
           </div>
         </div>
@@ -1734,19 +1719,6 @@ export function AdminPage({
                     className="font-latin h-10 w-full border border-[#36363a] bg-[#0b0b0c] px-3 text-xs text-white"
                   />
                 </div>
-                <div>
-                  <label className="mb-1 block text-[11px] text-[#bbb]">
-                    {isAr ? 'تغيير رمز الأدمن (اختياري)' : 'New Admin Passcode (optional)'}
-                  </label>
-                  <input
-                    type="text"
-                    dir="ltr"
-                    value={newPasscodeDraft}
-                    onChange={(e) => setNewPasscodeDraft(e.target.value)}
-                    placeholder={isAr ? 'اتركه فارغًا للإبقاء على الحالي' : 'Leave blank to keep current'}
-                    className="font-latin h-10 w-full border border-[#36363a] bg-[#0b0b0c] px-3 text-xs text-white"
-                  />
-                </div>
               </div>
 
               <button
@@ -1763,8 +1735,8 @@ export function AdminPage({
               </h2>
               <p className="text-xs leading-relaxed text-[#a5a09a]">
                 {isAr
-                  ? 'كل التعديلات تُحفظ محليًا في متصفحك. يمكنك تنزيل نسخة JSON أو استعادتها في أي وقت بدون قواعد بيانات مدفوعة.'
-                  : 'All edits persist locally in your browser. Export or restore a full JSON snapshot anytime with zero server fees.'}
+                  ? 'تُحفظ بيانات المعرض في قاعدة البيانات المشتركة بعد ربط المشروع. يمكنك تنزيل نسخة JSON احتياطية أو استعادتها.'
+                  : 'Showroom data is saved to the shared database once connected. Export or restore a JSON backup anytime.'}
               </p>
 
               <div className="space-y-3 pt-2">
