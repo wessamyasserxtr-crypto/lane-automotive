@@ -18,6 +18,13 @@ export interface CarTrimOption {
   highlightEn: string;
 }
 
+export type CarGalleryAngle = 'front' | 'left' | 'right' | 'rear';
+
+export interface CarGalleryImage {
+  angle: CarGalleryAngle;
+  src: string;
+}
+
 export interface CarModel {
   id: string;
   name: string;
@@ -30,6 +37,7 @@ export interface CarModel {
   availability?: CarAvailability;
   img: string;
   insideImg: string;
+  galleryImages?: CarGalleryImage[];
   sourceUrl: string;
   tag: Record<LangCode, string>;
   specs: Record<LangCode, string[]>;

@@ -26,6 +26,7 @@ import {
   type AppRoute,
 } from '../utils/laneLogic';
 import { CarVisual } from './CarVisual';
+import { CarGalleryThumbnails, getCarGalleryItems } from './CarGallery';
 
 interface CarDetailPageProps {
   car: CarModel | null;
@@ -58,6 +59,7 @@ export function CarDetailPage({
 }: CarDetailPageProps) {
   const isAr = lang === 'ar';
   const [view, setView] = useState<'studio' | 'outside' | 'inside'>('outside');
+  const [activeGalleryIndex, setActiveGalleryIndex] = useState(0);
   const [selectedColorIdx, setSelectedColorIdx] = useState(0);
   const [selectedTrimId, setSelectedTrimId] = useState<string>('');
   const [studioSide, setStudioSide] = useState<'left' | 'right'>('left');
@@ -65,6 +67,7 @@ export function CarDetailPage({
 
   useEffect(() => {
     setView(car?.img ? 'outside' : 'studio');
+    setActiveGalleryIndex(0);
     setSelectedColorIdx(0);
     setStudioSide('left');
     setHeadlightsOn(true);
@@ -99,9 +102,14 @@ export function CarDetailPage({
     );
   }
 
+  const galleryItems = getCarGalleryItems(car);
+  const safeGalleryIndex = Math.max(0, Math.min(activeGalleryIndex, galleryItems.length - 1));
+  const selectedGalleryItem = galleryItems[safeGalleryIndex];
+  const firstExteriorIndex = Math.max(0, galleryItems.findIndex((item) => item.angle !== 'interior'));
+  const interiorIndex = galleryItems.findIndex((item) => item.angle === 'interior');
   const isFav = favorites.includes(car.id);
   const isComparing = compareIds.includes(car.id);
-  const activeSrc = view === 'inside' ? car.insideImg : car.img;
+  const activeSrc = view === 'inside' ? car.insideImg : selectedGalleryItem?.src || car.img;
 
   const selectedColor = car.colors?.[selectedColorIdx] || null;
   const selectedColorName = selectedColor
@@ -160,7 +168,7 @@ export function CarDetailPage({
   const BackIcon = lang === 'ar' ? ArrowRight : ArrowLeft;
   const EnergyIcon = tco.isElectric ? Zap : Fuel;
 
-  const isStudioMode = view === 'studio' || (view === 'outside' && !car.img);
+  const isStudioMode = view === 'studio' || (view === 'outside' && !activeSrc);
 
   return (
     <section className="bg-[#0b0b0b] px-[6%] py-14 lg:px-[8%] lg:py-20">
@@ -229,7 +237,7 @@ export function CarDetailPage({
           <div>
             <div className="relative overflow-hidden border border-[#2d2d2d] bg-[#141517]">
               <CarVisual
-                key={`${car.id}-${view}`}
+                key={`${car.id}-${view}-${safeGalleryIndex}`}
                 car={car}
                 src={activeSrc}
                 forceStudio={isStudioMode}
@@ -248,13 +256,27 @@ export function CarDetailPage({
               )}
             </div>
 
+            <CarGalleryThumbnails
+              car={car}
+              items={galleryItems}
+              selectedIndex={safeGalleryIndex}
+              lang={lang}
+              onSelect={(index) => {
+                setActiveGalleryIndex(index);
+                setView(galleryItems[index]?.angle === 'interior' ? 'inside' : 'outside');
+              }}
+            />
+
             <div className="no-print mt-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2" role="tablist">
                 <button
                   type="button"
                   role="tab"
                   aria-selected={isStudioMode}
-                  onClick={() => setView('studio')}
+                  onClick={() => {
+                    setActiveGalleryIndex(firstExteriorIndex);
+                    setView('studio');
+                  }}
                   className={`inline-flex h-10 items-center gap-1.5 border px-4 text-xs font-semibold transition-colors ${
                     isStudioMode
                       ? 'border-[#ed1c24] bg-[#ed1c24] text-white'
@@ -269,7 +291,10 @@ export function CarDetailPage({
                     type="button"
                     role="tab"
                     aria-selected={view === 'outside'}
-                    onClick={() => setView('outside')}
+                    onClick={() => {
+                      setActiveGalleryIndex(firstExteriorIndex);
+                      setView('outside');
+                    }}
                     className={`h-10 border px-4 text-xs font-semibold transition-colors ${
                       view === 'outside'
                         ? 'border-[#ed1c24] bg-[#ed1c24] text-white'
@@ -283,7 +308,10 @@ export function CarDetailPage({
                   type="button"
                   role="tab"
                   aria-selected={view === 'inside'}
-                  onClick={() => setView('inside')}
+                  onClick={() => {
+                    if (interiorIndex >= 0) setActiveGalleryIndex(interiorIndex);
+                    setView('inside');
+                  }}
                   className={`h-10 border px-4 text-xs font-semibold transition-colors ${
                     view === 'inside'
                       ? 'border-[#ed1c24] bg-[#ed1c24] text-white'

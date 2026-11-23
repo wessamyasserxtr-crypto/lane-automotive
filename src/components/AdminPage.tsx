@@ -22,6 +22,7 @@ import {
 import {
   CARS,
   type CarAvailability,
+  type CarGalleryAngle,
   type CarModel,
   type CarType,
   type CurrencyCode,
@@ -90,6 +91,10 @@ interface CarDraft {
   availability: CarAvailability;
   img: string;
   insideImg: string;
+  frontImg: string;
+  leftImg: string;
+  rightImg: string;
+  rearImg: string;
   engineAr: string;
   engineEn: string;
   power: string;
@@ -123,6 +128,10 @@ function carToDraft(car: CarModel): CarDraft {
     availability: car.availability || 'available',
     img: car.img,
     insideImg: car.insideImg,
+    frontImg: car.galleryImages?.find((image) => image.angle === 'front')?.src || '',
+    leftImg: car.galleryImages?.find((image) => image.angle === 'left')?.src || '',
+    rightImg: car.galleryImages?.find((image) => image.angle === 'right')?.src || '',
+    rearImg: car.galleryImages?.find((image) => image.angle === 'rear')?.src || '',
     engineAr: car.engine.ar,
     engineEn: car.engine.en,
     power: car.power,
@@ -157,6 +166,10 @@ function emptyDraft(): CarDraft {
     availability: 'available',
     img: '',
     insideImg: '',
+    frontImg: '',
+    leftImg: '',
+    rightImg: '',
+    rearImg: '',
     engineAr: '1.5 لتر تيربو',
     engineEn: '1.5L Turbo',
     power: '170 hp',
@@ -184,7 +197,19 @@ const CATEGORY_LABELS: Record<CarType, { ar: string; en: string }> = {
   electric: { ar: 'كهربائية بالكامل', en: 'All-Electric' },
 };
 
-async function compressImageToDataUrl(file: File): Promise<string> {
+const GALLERY_ANGLE_FIELDS: Array<{
+  angle: CarGalleryAngle;
+  field: 'frontImg' | 'leftImg' | 'rightImg' | 'rearImg';
+  labelAr: string;
+  labelEn: string;
+}> = [
+  { angle: 'front', field: 'frontImg', labelAr: 'الأمام', labelEn: 'Front' },
+  { angle: 'left', field: 'leftImg', labelAr: 'الجانب الأيسر', labelEn: 'Left side' },
+  { angle: 'right', field: 'rightImg', labelAr: 'الجانب الأيمن', labelEn: 'Right side' },
+  { angle: 'rear', field: 'rearImg', labelAr: 'الخلف', labelEn: 'Rear' },
+];
+
+async function compressImageToDataUrl(file: File, maxW = 840, quality = 0.78): Promise<string> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
@@ -195,7 +220,6 @@ async function compressImageToDataUrl(file: File): Promise<string> {
   return new Promise<string>((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const maxW = 840;
       const scale = img.width > maxW ? maxW / img.width : 1;
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
@@ -206,7 +230,7 @@ async function compressImageToDataUrl(file: File): Promise<string> {
         return;
       }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', 0.78));
+      resolve(canvas.toDataURL('image/jpeg', quality));
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
@@ -268,6 +292,7 @@ export function AdminPage({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const extImgUploadRef = useRef<HTMLInputElement>(null);
   const intImgUploadRef = useRef<HTMLInputElement>(null);
+  const galleryImgUploadRefs = useRef<Partial<Record<CarGalleryAngle, HTMLInputElement | null>>>({});
 
   const showAdminBanner = (msg: string) => {
     setAdminBanner(msg);
@@ -315,12 +340,13 @@ export function AdminPage({
   };
 
   const handleCarImageUpload = async (
-    targetField: 'img' | 'insideImg',
+    targetField: 'img' | 'insideImg' | 'frontImg' | 'leftImg' | 'rightImg' | 'rearImg',
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
     if (!file || !editingDraft) return;
-    const compressed = await compressImageToDataUrl(file);
+    const isGalleryAngle = targetField !== 'img' && targetField !== 'insideImg';
+    const compressed = await compressImageToDataUrl(file, isGalleryAngle ? 720 : 840, isGalleryAngle ? 0.66 : 0.78);
     setEditingDraft({ ...editingDraft, [targetField]: compressed });
     showAdminBanner(isAr ? 'تم ضغط الصورة وإدراجها مجانًا بنجاح.' : 'Photo compressed and attached.');
     e.target.value = '';
@@ -380,6 +406,9 @@ export function AdminPage({
       availability: editingDraft.availability,
       img: editingDraft.img.trim(),
       insideImg: editingDraft.insideImg.trim(),
+      galleryImages: GALLERY_ANGLE_FIELDS
+        .map(({ angle, field }) => ({ angle, src: editingDraft[field].trim() }))
+        .filter((image) => image.src.length > 0),
       categoryLabel: createLocalizedRecord(catInfo.ar, catInfo.en),
       tag: createLocalizedRecord(editingDraft.tagAr, editingDraft.tagEn),
       story: createLocalizedRecord(editingDraft.storyAr, editingDraft.storyEn),
@@ -1085,6 +1114,53 @@ export function AdminPage({
                         <ImagePlus className="h-3.5 w-3.5 text-[#ed1c24]" />
                         <span>{isAr ? 'رفع' : 'Upload'}</span>
                       </button>
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2 border border-[#2c2c30] bg-[#101012] p-4">
+                    <div className="mb-3">
+                      <h3 className="text-xs font-bold text-[#f2eee8]">
+                        {isAr ? 'صور زوايا العربية' : 'Car angle photos'}
+                      </h3>
+                      <p className="mt-1 text-[10px] leading-relaxed text-[#96918b]">
+                        {isAr
+                          ? 'أضيفي صورًا حقيقية لنفس الموديل من الأمام والجانبين والخلف. ستظهر كمعرض صور في صفحة السيارة.'
+                          : 'Add real photos of the same model from the front, both sides, and rear. They appear in the vehicle gallery.'}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {GALLERY_ANGLE_FIELDS.map(({ angle, field, labelAr, labelEn }) => (
+                        <div key={angle}>
+                          <label className="mb-1 block text-[10px] font-medium text-[#bbb]">
+                            {isAr ? `صورة ${labelAr}` : `${labelEn} photo`}
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              dir="ltr"
+                              value={editingDraft[field]}
+                              onChange={(e) => setEditingDraft({ ...editingDraft, [field]: e.target.value })}
+                              placeholder="https://..."
+                              className="font-latin h-9 min-w-0 w-full border border-[#36363a] bg-[#0b0b0c] px-2.5 text-[10px] text-white"
+                            />
+                            <input
+                              ref={(node) => { galleryImgUploadRefs.current[angle] = node; }}
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => handleCarImageUpload(field, e)}
+                              className="hidden"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => galleryImgUploadRefs.current[angle]?.click()}
+                              className="inline-flex h-9 shrink-0 items-center gap-1 border border-[#444] bg-[#1a1a1d] px-2.5 text-[10px] font-semibold text-white hover:border-[#ed1c24]"
+                            >
+                              <ImagePlus className="h-3 w-3 text-[#ed1c24]" />
+                              <span>{isAr ? 'رفع' : 'Upload'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 

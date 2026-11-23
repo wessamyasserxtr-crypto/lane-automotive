@@ -4,6 +4,7 @@ import type { CarModel, CurrencyCode, LangCode } from '../data/cars';
 import type { TranslationPack } from '../data/i18n';
 import { formatPriceWithSymbol, getEffectivePriceEgp } from '../utils/laneLogic';
 import { CarVisual } from './CarVisual';
+import { CarGalleryThumbnails, getCarGalleryItems } from './CarGallery';
 
 interface CarDetailModalProps {
   car: CarModel | null;
@@ -27,10 +28,12 @@ export function CarDetailModal({
   const isAr = lang === 'ar';
   const [view, setView] = useState<'studio' | 'outside' | 'inside'>('outside');
   const [selectedColorIdx, setSelectedColorIdx] = useState(0);
+  const [activeGalleryIndex, setActiveGalleryIndex] = useState(0);
 
   useEffect(() => {
     setView(car?.img ? 'outside' : 'studio');
     setSelectedColorIdx(0);
+    setActiveGalleryIndex(0);
   }, [car]);
 
   useEffect(() => {
@@ -48,7 +51,12 @@ export function CarDetailModal({
 
   if (!car) return null;
 
-  const activeSrc = view === 'inside' ? car.insideImg : car.img;
+  const galleryItems = getCarGalleryItems(car);
+  const safeGalleryIndex = Math.max(0, Math.min(activeGalleryIndex, galleryItems.length - 1));
+  const selectedGalleryItem = galleryItems[safeGalleryIndex];
+  const firstExteriorIndex = Math.max(0, galleryItems.findIndex((item) => item.angle !== 'interior'));
+  const interiorIndex = galleryItems.findIndex((item) => item.angle === 'interior');
+  const activeSrc = view === 'inside' ? car.insideImg : selectedGalleryItem?.src || car.img;
   const selectedColor = car.colors?.[selectedColorIdx] || null;
   const selectedColorName = selectedColor
     ? isAr
@@ -57,7 +65,7 @@ export function CarDetailModal({
     : undefined;
   const effectivePrice = getEffectivePriceEgp(car);
   const hasDiscount = effectivePrice < car.priceEgp;
-  const isStudioMode = view === 'studio' || (view === 'outside' && !car.img);
+  const isStudioMode = view === 'studio' || (view === 'outside' && !activeSrc);
 
   const engineSpecs = [
     { label: t.modalCapacity, value: car.engine[lang] },
@@ -94,7 +102,7 @@ export function CarDetailModal({
         {/* Hero Visual */}
         <div className="relative h-[240px] bg-[#181818] sm:h-[310px]">
           <CarVisual
-            key={`${car.id}-${view}`}
+            key={`${car.id}-${view}-${safeGalleryIndex}`}
             car={car}
             src={activeSrc}
             forceStudio={isStudioMode}
@@ -126,7 +134,10 @@ export function CarDetailModal({
                 type="button"
                 role="tab"
                 aria-selected={isStudioMode}
-                onClick={() => setView('studio')}
+                onClick={() => {
+                  setActiveGalleryIndex(firstExteriorIndex);
+                  setView('studio');
+                }}
                 className={`inline-flex h-10 items-center gap-1.5 border px-4 text-xs font-semibold transition-colors ${
                   isStudioMode
                     ? 'border-[#ed1c24] bg-[#ed1c24] text-white'
@@ -141,7 +152,10 @@ export function CarDetailModal({
                   type="button"
                   role="tab"
                   aria-selected={view === 'outside'}
-                  onClick={() => setView('outside')}
+                  onClick={() => {
+                    setActiveGalleryIndex(firstExteriorIndex);
+                    setView('outside');
+                  }}
                   className={`h-10 border px-4 text-xs font-semibold transition-colors ${
                     view === 'outside'
                       ? 'border-[#ed1c24] bg-[#ed1c24] text-white'
@@ -155,7 +169,10 @@ export function CarDetailModal({
                 type="button"
                 role="tab"
                 aria-selected={view === 'inside'}
-                onClick={() => setView('inside')}
+                onClick={() => {
+                  if (interiorIndex >= 0) setActiveGalleryIndex(interiorIndex);
+                  setView('inside');
+                }}
                 className={`h-10 border px-4 text-xs font-semibold transition-colors ${
                   view === 'inside'
                     ? 'border-[#ed1c24] bg-[#ed1c24] text-white'
@@ -165,6 +182,17 @@ export function CarDetailModal({
                 {t.modalInside}
               </button>
             </div>
+
+            <CarGalleryThumbnails
+              car={car}
+              items={galleryItems}
+              selectedIndex={safeGalleryIndex}
+              lang={lang}
+              onSelect={(index) => {
+                setActiveGalleryIndex(index);
+                setView(galleryItems[index]?.angle === 'interior' ? 'inside' : 'outside');
+              }}
+            />
 
             {car.colors && car.colors.length > 0 && (
               <div className="mb-5 border border-[#242428] bg-[#141416] p-3.5">
@@ -183,6 +211,7 @@ export function CarDetailModal({
                         type="button"
                         onClick={() => {
                           setSelectedColorIdx(idx);
+                          setActiveGalleryIndex(firstExteriorIndex);
                           setView('studio');
                         }}
                         className={`inline-flex items-center gap-1.5 border px-2.5 py-1 text-[11px] transition-colors ${
