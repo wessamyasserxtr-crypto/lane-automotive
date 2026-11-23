@@ -209,32 +209,23 @@ const GALLERY_ANGLE_FIELDS: Array<{
   { angle: 'rear', field: 'rearImg', labelAr: 'الخلف', labelEn: 'Rear' },
 ];
 
-async function compressImageToDataUrl(file: File, maxW = 840, quality = 0.78): Promise<string> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('Failed to read image'));
-    reader.readAsDataURL(file);
-  });
+async function compressImageToDataUrl(file: File, maxDimension = 840, quality = 0.68): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('Unsupported image type');
+  if (file.size > 18 * 1024 * 1024) throw new Error('Image file is too large to process safely');
 
-  return new Promise<string>((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const scale = img.width > maxW ? maxW / img.width : 1;
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        resolve(dataUrl);
-        return;
-      }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
+  const bitmap = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, maxDimension / bitmap.width, maxDimension / bitmap.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not prepare the image');
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', quality);
+  } finally {
+    bitmap.close();
+  }
 }
 
 export function AdminPage({
@@ -346,10 +337,15 @@ export function AdminPage({
     const file = e.target.files?.[0];
     if (!file || !editingDraft) return;
     const isGalleryAngle = targetField !== 'img' && targetField !== 'insideImg';
-    const compressed = await compressImageToDataUrl(file, isGalleryAngle ? 720 : 840, isGalleryAngle ? 0.66 : 0.78);
-    setEditingDraft({ ...editingDraft, [targetField]: compressed });
-    showAdminBanner(isAr ? 'تم ضغط الصورة وإدراجها مجانًا بنجاح.' : 'Photo compressed and attached.');
-    e.target.value = '';
+    try {
+      const compressed = await compressImageToDataUrl(file, isGalleryAngle ? 720 : 840, isGalleryAngle ? 0.58 : 0.68);
+      setEditingDraft((current) => current ? { ...current, [targetField]: compressed } : current);
+      showAdminBanner(isAr ? 'تم ضغط الصورة وإدراجها بنجاح.' : 'Photo compressed and attached.');
+    } catch {
+      showAdminBanner(isAr ? 'تعذر تجهيز الصورة. استخدمي JPG أو PNG أصغر من 18 ميجابايت.' : 'Could not process the image. Use a JPG or PNG under 18 MB.');
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const handleSaveCarDraft = (e: React.FormEvent) => {
@@ -456,10 +452,19 @@ export function AdminPage({
     };
 
     const updated = upsertCarInCatalog(cars, nextCar);
+    const firestorePayloadSize = new TextEncoder().encode(JSON.stringify({ cars: updated, settings })).byteLength;
+    if (firestorePayloadSize > 850_000) {
+      setCarFormError(
+        isAr
+          ? 'حجم صور الكتالوج كبير على الحفظ الآمن في قاعدة البيانات. استخدمي صورًا أصغر أو روابط صور بدل الملفات الكبيرة.'
+          : 'The catalog photos exceed the safe database size. Use smaller images or image URLs instead of large files.',
+      );
+      return;
+    }
     onUpdateCars(updated);
     setEditingDraft(null);
     showAdminBanner(
-      isAr ? `تم حفظ «${nextCar.name}» وتحديث المعرض فورًا.` : `Saved "${nextCar.name}" to storefront catalog.`,
+      isAr ? `تم تحديث «${nextCar.name}»، وجارٍ مزامنة التغييرات.` : `Updated "${nextCar.name}"; syncing changes.`,
     );
   };
 

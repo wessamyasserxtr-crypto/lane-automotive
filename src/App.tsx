@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Calculator, CalendarCheck, GitCompareArrows, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -132,6 +132,8 @@ export default function App() {
   const [recommendedCarId, setRecommendedCarId] = useState<string | null>(null);
   const [visitCarId, setVisitCarId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const currentLang = useRef(lang);
+  currentLang.current = lang;
 
   const t = TRANSLATIONS[lang];
 
@@ -216,7 +218,12 @@ export default function App() {
     if (!firestore || !isAdminAuthenticated || !remoteDataReady) return;
     void setDoc(doc(firestore, 'showroom_state', 'primary'), {
       cars, settings, updatedAt: serverTimestamp(),
-    }, { merge: true }).catch((error) => console.error('Could not save LANE showroom data:', error));
+    }, { merge: true }).catch((error) => {
+      console.error('Could not save LANE showroom data:', error);
+      showToast(currentLang.current === 'ar'
+        ? 'تعذر حفظ البيانات على السحابة. راجعي اتصال الإنترنت وحجم الصور.'
+        : 'Could not save changes to the cloud. Check the connection and image sizes.');
+    });
   }, [cars, settings, isAdminAuthenticated, remoteDataReady]);
 
   useEffect(() => {
