@@ -1,9 +1,10 @@
-import { ArrowUpRight, CalendarCheck, Printer } from 'lucide-react';
+import { ArrowUpRight, CalendarCheck, MessageCircle, Printer } from 'lucide-react';
 import type { CarModel, CurrencyCode, LangCode } from '../data/cars';
 import type { TranslationPack } from '../data/i18n';
 import type { ShowroomSettings } from '../data/store';
 import {
   calculateTCO,
+  buildHashForRoute,
   formatPriceWithSymbol,
   getEffectivePriceEgp,
   type AppRoute,
@@ -42,6 +43,13 @@ export function ComparePage({
 
   const slotCars = effectiveIds.map((id) => cars.find((c) => c.id === id) || null);
   const activeCars = slotCars.filter((c): c is CarModel => c !== null);
+  const shareUrl = new URL(window.location.href);
+  shareUrl.hash = buildHashForRoute({ page: 'compare', carIds: activeCars.map((car) => car.id) });
+  const shareMessage = [
+    isAr ? 'مرحبًا LANE، أريد الاستفسار عن مقارنة السيارات التالية:' : 'Hello LANE, I would like to ask about this car comparison:',
+    ...activeCars.map((car) => `• ${car.name}: ${formatPriceWithSymbol(getEffectivePriceEgp(car), currency, lang)}`),
+    `${isAr ? 'رابط المقارنة:' : 'Comparison link:'} ${shareUrl.toString()}`,
+  ].join('\n');
 
   const getCarTco = (car: CarModel) =>
     calculateTCO({
@@ -98,14 +106,26 @@ export function ComparePage({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="no-print inline-flex h-10 items-center gap-2 border border-[#3a3a3f] bg-[#131315] px-4 text-xs font-semibold text-[#f5f3ef] transition-colors hover:border-[#ed1c24]"
-          >
-            <Printer className="h-4 w-4 text-[#ed1c24]" />
-            <span>{isAr ? 'طباعة / حفظ PDF للمقارنة' : 'Print / Save PDF'}</span>
-          </button>
+          <div className="no-print flex flex-wrap gap-2">
+            <a
+              href={`https://wa.me/${settings.whatsappDigits.replace(/\D/g, '')}?text=${encodeURIComponent(shareMessage)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={isAr ? 'إرسال استفسار المقارنة عبر واتساب' : 'Ask LANE about this comparison on WhatsApp'}
+              className="inline-flex h-10 items-center gap-2 bg-[#1d8f59] px-4 text-xs font-semibold text-white transition-colors hover:bg-[#24a86a]"
+            >
+              <MessageCircle className="h-4 w-4" />
+              <span>{isAr ? 'اسألنا على واتساب' : 'Ask on WhatsApp'}</span>
+            </a>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex h-10 items-center gap-2 border border-[#3a3a3f] bg-[#131315] px-4 text-xs font-semibold text-[#f5f3ef] transition-colors hover:border-[#ed1c24]"
+            >
+              <Printer className="h-4 w-4 text-[#ed1c24]" />
+              <span>{isAr ? 'طباعة / حفظ PDF للمقارنة' : 'Print / Save PDF'}</span>
+            </button>
+          </div>
         </div>
 
         {/* 3 Model Selectors */}

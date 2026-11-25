@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Calculator, CalendarCheck, GitCompareArrows, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import {
@@ -64,11 +64,23 @@ import { AiAssistantSection } from './components/AiAssistantSection';
 import { SiteFooter, VisitSection } from './components/LocationAndFooter';
 import { CarDetailModal } from './components/CarDetailModal';
 import { CompareModal } from './components/CompareModal';
-import { CarDetailPage } from './components/CarDetailPage';
-import { ComparePage } from './components/ComparePage';
-import { AdminPage } from './components/AdminPage';
 import { TrustAndFaqSection } from './components/TrustAndFaqSection';
 import { DriftIntro } from './components/DriftIntro';
+
+const CarDetailPage = lazy(() => import('./components/CarDetailPage').then((module) => ({ default: module.CarDetailPage })));
+const ComparePage = lazy(() => import('./components/ComparePage').then((module) => ({ default: module.ComparePage })));
+const AdminPage = lazy(() => import('./components/AdminPage').then((module) => ({ default: module.AdminPage })));
+
+function RouteLoading({ lang }: { lang: LangCode }) {
+  return (
+    <div role="status" aria-live="polite" className="grid min-h-[45vh] place-items-center bg-[#0b0b0b] text-sm text-white/65">
+      <span className="flex items-center gap-3">
+        <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-[#ed1c24]" />
+        {lang === 'ar' ? 'بنجهّز الصفحة…' : 'Loading page…'}
+      </span>
+    </div>
+  );
+}
 
 type WelcomeStep = 'intro' | 'login' | 'recommendation' | 'site';
 
@@ -126,7 +138,23 @@ export default function App() {
       return [];
     }
   });
-  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareIds, setCompareIds] = useState<string[]>(() => {
+    try {
+      const initialRoute = typeof window !== 'undefined'
+        ? parseRouteFromHash(window.location.hash)
+        : null;
+      if (initialRoute?.page === 'compare' && initialRoute.carIds?.length) {
+        return initialRoute.carIds;
+      }
+      const raw = localStorage.getItem(STORAGE_KEYS.compare);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed)
+        ? [...new Set(parsed.filter((id): id is string => typeof id === 'string').slice(0, 3))]
+        : [];
+    } catch {
+      return [];
+    }
+  });
   const [compareOpen, setCompareOpen] = useState(false);
   const [activeCar, setActiveCar] = useState<CarModel | null>(null);
   const [recommendedCarId, setRecommendedCarId] = useState<string | null>(null);
@@ -263,6 +291,9 @@ export default function App() {
     const onHashChange = () => {
       const parsed = parseRouteFromHash(window.location.hash);
       setRoute(parsed);
+      if (parsed.page === 'compare' && parsed.carIds?.length) {
+        setCompareIds(parsed.carIds);
+      }
       if (parsed.page === 'admin') {
         setWelcomeStep('site');
       }
@@ -303,6 +334,21 @@ export default function App() {
       // Ignore storage failures
     }
   }, [favorites]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.compare, JSON.stringify(compareIds));
+    } catch {
+      // Keep comparison usable when browser storage is unavailable.
+    }
+  }, [compareIds]);
+
+  useEffect(() => {
+    setCompareIds((current) => {
+      const valid = current.filter((id) => cars.some((car) => car.id === id));
+      return valid.length === current.length ? current : valid;
+    });
+  }, [cars]);
 
   const navigate = (nextRoute: AppRoute) => {
     const nextHash = buildHashForRoute(nextRoute);
@@ -352,7 +398,10 @@ export default function App() {
         prev[1] || cars[1]?.id || '',
         prev[2] || '',
       ];
+      const previousId = next[slotIndex];
+      const duplicateSlot = next.findIndex((id, index) => index !== slotIndex && id === carId);
       next[slotIndex] = carId;
+      if (duplicateSlot >= 0) next[duplicateSlot] = previousId;
       return next.filter(Boolean);
     });
   };
@@ -624,34 +673,38 @@ export default function App() {
         )}
 
         {route.page === 'car-detail' && (
-          <CarDetailPage
-            car={detailCar}
-            allCars={cars}
-            settings={settings}
-            t={t}
-            lang={lang}
-            currency={currency}
-            favorites={favorites}
-            compareIds={compareIds}
-            onToggleFavorite={handleToggleFavorite}
-            onToggleCompare={handleToggleCompare}
-            onNavigate={navigate}
-            onBookVisit={handleBookVisit}
-          />
+          <Suspense fallback={<RouteLoading lang={lang} />}>
+            <CarDetailPage
+              car={detailCar}
+              allCars={cars}
+              settings={settings}
+              t={t}
+              lang={lang}
+              currency={currency}
+              favorites={favorites}
+              compareIds={compareIds}
+              onToggleFavorite={handleToggleFavorite}
+              onToggleCompare={handleToggleCompare}
+              onNavigate={navigate}
+              onBookVisit={handleBookVisit}
+            />
+          </Suspense>
         )}
 
         {route.page === 'compare' && (
-          <ComparePage
-            cars={cars}
-            settings={settings}
-            selectedIds={compareIds}
-            t={t}
-            lang={lang}
-            currency={currency}
-            onSetSlotCar={handleSetCompareSlot}
-            onNavigate={navigate}
-            onBookVisit={handleBookVisit}
-          />
+          <Suspense fallback={<RouteLoading lang={lang} />}>
+            <ComparePage
+              cars={cars}
+              settings={settings}
+              selectedIds={compareIds}
+              t={t}
+              lang={lang}
+              currency={currency}
+              onSetSlotCar={handleSetCompareSlot}
+              onNavigate={navigate}
+              onBookVisit={handleBookVisit}
+            />
+          </Suspense>
         )}
 
         {route.page === 'finance' && (
@@ -693,30 +746,32 @@ export default function App() {
         )}
 
         {route.page === 'admin' && (
-          <AdminPage
-            lang={lang}
-            currency={currency}
-            cars={cars}
-            bookings={bookings}
-            financeEntries={financeEntries}
-            financeStatus={financeStatus}
-            customerLeads={customerLeads}
-            crmStatus={crmStatus}
-            settings={settings}
-            isAuthenticated={isAdminAuthenticated}
-            authConfigured={isFirebaseConfigured}
-            authLoading={authLoading}
-            onLogin={handleAdminLogin}
-            onLogout={handleAdminLogout}
-            onUpdateCars={setCars}
-            onUpdateBookings={setBookings}
-            onAddFinanceEntry={handleAddFinanceEntry}
-            onVoidFinanceEntry={handleVoidFinanceEntry}
-            onSaveCustomerLead={handleSaveCustomerLead}
-            onUpdateSettings={setSettings}
-            onResetFactory={handleResetFactory}
-            onNavigate={navigate}
-          />
+          <Suspense fallback={<RouteLoading lang={lang} />}>
+            <AdminPage
+              lang={lang}
+              currency={currency}
+              cars={cars}
+              bookings={bookings}
+              financeEntries={financeEntries}
+              financeStatus={financeStatus}
+              customerLeads={customerLeads}
+              crmStatus={crmStatus}
+              settings={settings}
+              isAuthenticated={isAdminAuthenticated}
+              authConfigured={isFirebaseConfigured}
+              authLoading={authLoading}
+              onLogin={handleAdminLogin}
+              onLogout={handleAdminLogout}
+              onUpdateCars={setCars}
+              onUpdateBookings={setBookings}
+              onAddFinanceEntry={handleAddFinanceEntry}
+              onVoidFinanceEntry={handleVoidFinanceEntry}
+              onSaveCustomerLead={handleSaveCustomerLead}
+              onUpdateSettings={setSettings}
+              onResetFactory={handleResetFactory}
+              onNavigate={navigate}
+            />
+          </Suspense>
         )}
       </main>}
 

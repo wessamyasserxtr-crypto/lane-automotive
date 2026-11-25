@@ -199,6 +199,7 @@ export const STORAGE_KEYS = {
   bookings: 'lane_visit_bookings_v1',
   settings: 'lane_showroom_settings_v2',
   favorites: 'lane_favorites',
+  compare: 'lane_compare_selection_v1',
 };
 
 export function loadStoredCars(): CarModel[] {

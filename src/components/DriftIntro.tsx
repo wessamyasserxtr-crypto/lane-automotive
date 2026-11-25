@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import type { Lang } from '../data/cars';
+import type { LangCode } from '../data/cars';
 
 interface DriftIntroProps {
   visible: boolean;
-  lang: Lang;
+  lang: LangCode;
   onFinish: () => void;
 }
 

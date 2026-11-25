@@ -21,7 +21,7 @@ export type AppRoute =
   | { page: 'home' }
   | { page: 'cars' }
   | { page: 'car-detail'; carId: string }
-  | { page: 'compare' }
+  | { page: 'compare'; carIds?: string[] }
   | { page: 'finance' }
   | { page: 'quiz' }
   | { page: 'visit' }
@@ -29,18 +29,31 @@ export type AppRoute =
 
 export function parseRouteFromHash(hash: string): AppRoute {
   const clean = hash.replace(/^#/, '').trim();
-  if (!clean || clean === '/' || clean === 'home') return { page: 'home' };
-  if (clean.startsWith('/cars/')) {
-    const carId = decodeURIComponent(clean.slice('/cars/'.length)).trim();
+  const [path, queryString = ''] = clean.split('?', 2);
+  if (!path || path === '/' || path === 'home') return { page: 'home' };
+  if (path.startsWith('/cars/')) {
+    let carId = '';
+    try {
+      carId = decodeURIComponent(path.slice('/cars/'.length)).trim();
+    } catch {
+      return { page: 'cars' };
+    }
     if (carId) return { page: 'car-detail', carId };
     return { page: 'cars' };
   }
-  if (clean === '/cars' || clean === 'inventory') return { page: 'cars' };
-  if (clean === '/compare') return { page: 'compare' };
-  if (clean === '/finance' || clean === 'finance') return { page: 'finance' };
-  if (clean === '/quiz' || clean === 'quiz') return { page: 'quiz' };
-  if (clean === '/visit' || clean === 'location') return { page: 'visit' };
-  if (clean === '/admin' || clean === 'admin') return { page: 'admin' };
+  if (path === '/cars' || path === 'inventory') return { page: 'cars' };
+  if (path === '/compare') {
+    const carIds = new URLSearchParams(queryString).get('cars')
+      ?.split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 3);
+    return { page: 'compare', ...(carIds?.length ? { carIds: [...new Set(carIds)] } : {}) };
+  }
+  if (path === '/finance' || path === 'finance') return { page: 'finance' };
+  if (path === '/quiz' || path === 'quiz') return { page: 'quiz' };
+  if (path === '/visit' || path === 'location') return { page: 'visit' };
+  if (path === '/admin' || path === 'admin') return { page: 'admin' };
   return { page: 'home' };
 }
 
@@ -53,7 +66,9 @@ export function buildHashForRoute(route: AppRoute): string {
     case 'car-detail':
       return `#/cars/${encodeURIComponent(route.carId)}`;
     case 'compare':
-      return '#/compare';
+      return route.carIds?.length
+        ? `#/compare?cars=${encodeURIComponent(route.carIds.slice(0, 3).join(','))}`
+        : '#/compare';
     case 'finance':
       return '#/finance';
     case 'quiz':
@@ -86,8 +101,14 @@ export function formatCurrency(
   lang: LangCode,
 ): string {
   const converted = amountEgp * CURRENCY_RATES[currency];
-  const locale = lang === 'ar' ? 'ar-EG' : 'en-US';
-  return new Intl.NumberFormat(locale, {
+  const localeByLanguage: Record<LangCode, string> = {
+    ar: 'ar-EG',
+    en: 'en-US',
+    fr: 'fr-FR',
+    zh: 'zh-CN',
+    de: 'de-DE',
+  };
+  return new Intl.NumberFormat(localeByLanguage[lang], {
     maximumFractionDigits: 0,
   }).format(converted);
 }
@@ -162,20 +183,31 @@ export function searchAndSortCars(
   },
 ): CarModel[] {
   const base = filterCars(cars, options.filter, options.favoriteIds);
-  const q = options.searchQuery.trim().toLocaleLowerCase();
+  const normalizeSearchText = (value: string) => value
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 1776))
+    .replace(/\s+/g, ' ')
+    .trim();
+  const q = normalizeSearchText(options.searchQuery);
 
   const searched = q
     ? base.filter((car) => {
-        const haystack = [
+        const haystack = normalizeSearchText([
+          car.id,
           car.name,
           car.categoryLabel[options.lang],
           car.engine[options.lang],
           car.tag[options.lang],
           ...(car.colors?.map((col) => `${col.nameAr} ${col.nameEn}`) || []),
           ...car.specs[options.lang],
-        ]
-          .join(' ')
-          .toLocaleLowerCase();
+        ].join(' '));
         return haystack.includes(q);
       })
     : [...base];
@@ -432,7 +464,18 @@ export function generateAssistantReply(
   currency: CurrencyCode,
   lang: LangCode,
 ): string {
-  const s = query.toLocaleLowerCase().trim();
+  const s = query
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 1776))
+    .replace(/([0-9])[٬,](?=[0-9]{3}(?:\D|$))/g, '$1')
+    .replace(/([0-9]),([0-9])/g, '$1.$2')
+    .trim();
 
   const messages: Record<
     LangCode,
@@ -446,6 +489,8 @@ export function generateAssistantReply(
       matchesPrefix: string;
       indicativeSuffix: string;
       seatsWord: string;
+      featureLabel: string;
+      consumptionLabel: string;
     }
   > = {
     ar: {
@@ -461,6 +506,8 @@ export function generateAssistantReply(
       matchesPrefix: 'الموديلات المناسبة من المعروض: ',
       indicativeSuffix: ' — الأسعار استرشادية.',
       seatsWord: 'مقاعد',
+      featureLabel: 'تجهيزات بارزة',
+      consumptionLabel: 'استهلاك معلن',
     },
     en: {
       compareHint: 'Enter two model names to compare, such as MG 5 and BYD Seal.',
@@ -475,6 +522,8 @@ export function generateAssistantReply(
       matchesPrefix: 'Matching models from our collection: ',
       indicativeSuffix: ' — indicative prices.',
       seatsWord: 'seats',
+      featureLabel: 'Highlights',
+      consumptionLabel: 'Listed consumption',
     },
     fr: {
       compareHint: 'Indiquez deux modèles à comparer, par exemple MG 5 et BYD Seal.',
@@ -487,6 +536,8 @@ export function generateAssistantReply(
       matchesPrefix: 'Modèles correspondants : ',
       indicativeSuffix: ' — prix indicatifs.',
       seatsWord: 'places',
+      featureLabel: 'Équipements clés',
+      consumptionLabel: 'Consommation indiquée',
     },
     zh: {
       compareHint: '请输入两个车型名称进行对比，例如 MG 5 和 BYD Seal。',
@@ -498,6 +549,8 @@ export function generateAssistantReply(
       matchesPrefix: '为您匹配的展厅车型：',
       indicativeSuffix: ' — 仅供参考价。',
       seatsWord: '座',
+      featureLabel: '主要配置',
+      consumptionLabel: '标注能耗',
     },
     de: {
       compareHint: 'Nennen Sie zwei Modelle zum Vergleich, z. B. MG 5 und BYD Seal.',
@@ -510,6 +563,8 @@ export function generateAssistantReply(
       matchesPrefix: 'Passende Modelle aus unserer Auswahl: ',
       indicativeSuffix: ' — Richtpreise.',
       seatsWord: 'Sitze',
+      featureLabel: 'Highlights',
+      consumptionLabel: 'Angegebener Verbrauch',
     },
   };
 
@@ -520,7 +575,7 @@ export function generateAssistantReply(
   }
 
   const found = cars.filter((c) => {
-    const lowerName = c.name.toLocaleLowerCase();
+    const lowerName = c.name.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const asciiName = lowerName.replace('citroën', 'citroen');
     const tokens = asciiName.split(' ');
     return (
@@ -568,7 +623,16 @@ export function generateAssistantReply(
 
   if (found.length === 1) {
     const c = found[0];
-    return `${c.name} · ${formatPriceWithSymbol(getEffectivePriceEgp(c), currency, lang)}\n${c.engine[lang]} · ${c.power} · ${c.gearbox[lang]} · ${c.drive} · ${c.seats} ${t.seatsWord}`;
+    const consumption = c.type === 'electric'
+      ? c.kwhPer100Km ? `${t.consumptionLabel}: ${c.kwhPer100Km} kWh/100 km` : ''
+      : c.fuelLitersPer100Km ? `${t.consumptionLabel}: ${c.fuelLitersPer100Km} L/100 km` : '';
+    const features = c.features[lang].slice(0, 3).join(' · ');
+    return [
+      `${c.name} · ${formatPriceWithSymbol(getEffectivePriceEgp(c), currency, lang)}`,
+      `${c.engine[lang]} · ${c.power} · ${c.gearbox[lang]} · ${c.drive} · ${c.seats} ${t.seatsWord}`,
+      consumption,
+      features ? `${t.featureLabel}: ${features}` : '',
+    ].filter(Boolean).join('\n');
   }
 
   if (/تمويل|قسط|finance|installment|financement|分期|金融|finanzier/.test(s)) {

@@ -121,6 +121,10 @@ export function AiAssistantSection({
           <div
             ref={bodyRef}
             data-testid="assistant-messages"
+            role="log"
+            aria-label={t.onlineLabel}
+            aria-live="polite"
+            aria-relevant="additions text"
             className="flex h-[280px] flex-col gap-3 overflow-y-auto p-5"
           >
             {messages.map((msg) => (
@@ -137,8 +141,15 @@ export function AiAssistantSection({
             ))}
 
             {isThinking && (
-              <div className="self-start border border-[#333] bg-[#242424] px-4 py-2 text-xs text-[#aaa6a1]">
-                ...
+              <div role="status" className="self-start border border-[#333] bg-[#242424] px-4 py-2.5 text-xs text-[#aaa6a1]">
+                <span className="sr-only">
+                  {lang === 'ar' ? 'المساعد يكتب الرد' : lang === 'fr' ? 'L’assistant rédige une réponse' : lang === 'zh' ? '助手正在回复' : lang === 'de' ? 'Der Assistent schreibt' : 'The assistant is typing'}
+                </span>
+                <span aria-hidden="true" className="flex items-center gap-1">
+                  {[0, 1, 2].map((dot) => (
+                    <span key={dot} className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#ed1c24]" style={{ animationDelay: `${dot * 120}ms` }} />
+                  ))}
+                </span>
               </div>
             )}
 
@@ -148,7 +159,8 @@ export function AiAssistantSection({
                   key={prompt}
                   type="button"
                   onClick={() => sendPrompt(prompt)}
-                  className="border border-[#5e3033] px-3 py-1.5 text-[11px] text-[#f4cacc] transition-colors hover:border-[#ed1c24] hover:bg-[#ed1c24]/15"
+                  disabled={isThinking}
+                  className="border border-[#5e3033] px-3 py-1.5 text-[11px] text-[#f4cacc] transition-colors hover:border-[#ed1c24] hover:bg-[#ed1c24]/15 disabled:cursor-wait disabled:opacity-50"
                 >
                   {prompt}
                 </button>
@@ -169,6 +181,7 @@ export function AiAssistantSection({
             <input
               id="lane-assistant-input"
               type="text"
+              maxLength={600}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder={t.chatPlaceholder}
@@ -177,7 +190,8 @@ export function AiAssistantSection({
             <button
               type="submit"
               aria-label={t.chatSendAria}
-              className="flex h-12 w-14 items-center justify-center bg-[#ed1c24] text-white transition-colors hover:bg-[#ff3037]"
+              disabled={isThinking || !inputValue.trim()}
+              className="flex h-12 w-14 items-center justify-center bg-[#ed1c24] text-white transition-colors hover:bg-[#ff3037] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <ArrowUp className="h-4 w-4" />
             </button>
