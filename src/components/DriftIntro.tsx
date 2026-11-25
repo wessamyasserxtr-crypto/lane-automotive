@@ -99,7 +99,7 @@ export function DriftIntro({ visible, lang, onFinish }: DriftIntroProps) {
           </motion.div>
 
           {/* Sleek Motion & Drift Light-Trail Stage */}
-          <div className="intro-road-stage relative h-36 w-full max-w-4xl overflow-hidden sm:h-48">
+          <div className="intro-road-stage relative h-44 w-full max-w-[1100px] overflow-hidden sm:h-56 lg:h-60">
             <motion.div
               className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-[#ed1c24]/70 to-transparent"
               initial={{ scaleX: 0, opacity: 0 }}
@@ -167,21 +167,23 @@ export function DriftIntro({ visible, lang, onFinish }: DriftIntroProps) {
 
             {/* Sleek Metallic GT Silhouette (Sculpted Automotive Concept Lines, No Cartoon Outlines) */}
             <motion.div
-              initial={{ x: '-35vw', y: 34, rotate: 0, scale: 0.92 }}
-              animate={{
-                x: ['-35vw', '30vw', '37vw', '128vw'],
-                y: [34, 28, 32, 20],
-                rotate: [0, -6, -9, 1],
-                scale: [0.92, 1.02, 1.04, 0.96],
+              aria-hidden="true"
+              initial={reduceMotion ? false : { x: '-112vw', y: 30, rotate: 0, scale: 0.92, opacity: 0 }}
+              animate={reduceMotion ? { x: 0, y: 0, rotate: 0, scale: 0.86, opacity: 1 } : {
+                x: ['-112vw', '-7vw', '1vw', '126vw'],
+                y: [30, 8, 12, -10],
+                rotate: [0, -1.6, -0.8, 1.5],
+                scale: [0.92, 1, 1.02, 0.95],
+                opacity: [0, 1, 1, 0],
               }}
               transition={{
-                duration: 2.1,
-                times: [0, 0.44, 0.66, 1],
-                ease: [0.22, 1, 0.36, 1],
+                duration: reduceMotion ? 0 : 2.55,
+                times: [0, 0.46, 0.68, 1],
+                ease: 'easeInOut',
               }}
-              className="hidden"
+              className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-[min(820px,112vw)] items-center"
             >
-              <svg viewBox="0 0 640 180" className="w-full drop-shadow-[0_18px_30px_rgba(0,0,0,0.95)]">
+              <svg viewBox="0 0 640 180" className="h-full w-full overflow-visible drop-shadow-[0_18px_34px_rgba(0,0,0,0.95)]">
                 <defs>
                   <linearGradient id="gtSilver" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="#f5f3ef" stopOpacity="0.95" />
@@ -196,23 +198,27 @@ export function DriftIntro({ visible, lang, onFinish }: DriftIntroProps) {
                     <stop offset="0%" stopColor="#fff7df" stopOpacity="0.45" />
                     <stop offset="100%" stopColor="#fff7df" stopOpacity="0" />
                   </linearGradient>
+                <filter id="softRedGlow" x="-50%" y="-100%" width="200%" height="300%">
+                  <feGaussianBlur stdDeviation="7" />
+                </filter>
                 </defs>
 
                 {/* Volumetric Headlight Cone */}
-                <polygon points="560,104 640,84 640,134 560,114" fill="url(#beam)" />
+                <polygon points="562,105 640,76 640,146 562,116" fill="url(#beam)" />
 
                 {/* Studio Floor Reflection */}
-                <ellipse cx="315" cy="148" rx="250" ry="12" fill="#000000" fillOpacity="0.8" />
+                <ellipse cx="315" cy="151" rx="254" ry="12" fill="#000000" fillOpacity="0.82" />
+                <ellipse cx="466" cy="148" rx="78" ry="7" fill="#ed1c24" fillOpacity="0.15" filter="url(#softRedGlow)" />
 
                 {/* Sculpted Fastback Body */}
                 <path
-                  d="M46 122 L66 94 Q80 80 112 75 L212 46 Q256 36 308 36 H376 Q418 36 452 60 L506 94 L562 104 Q584 109 586 124 L582 134 H44 V125 Z"
+                  d="M40 123 L45 113 Q52 105 80 101 L142 93 Q172 87 205 77 Q225 51 258 44 C290 36 337 38 369 47 Q405 56 432 82 L465 92 L530 98 Q558 103 579 116 L592 127 L587 138 L516 138 A48 48 0 0 0 420 138 H207 A48 48 0 0 0 111 138 H45 L40 132 Z"
                   fill="url(#gtSilver)"
                 />
 
                 {/* Top Light Rim */}
                 <path
-                  d="M114 75 L214 47 Q256 37 308 37 H375 Q416 37 450 61 L504 94"
+                  d="M80 101 Q142 93 205 77 Q225 51 258 44 C290 36 337 38 369 47 Q405 56 432 82 L465 92 L530 98"
                   fill="none"
                   stroke="#ffffff"
                   strokeOpacity="0.55"
@@ -221,13 +227,15 @@ export function DriftIntro({ visible, lang, onFinish }: DriftIntroProps) {
 
                 {/* Sleek Greenhouse Glass */}
                 <path
-                  d="M202 52 L268 41 H364 Q396 41 422 60 L460 90 H164 Z"
+                  d="M219 75 L256 50 Q269 45 299 46 L327 75 Z"
                   fill="url(#gtGlass)"
                 />
+                <path d="M337 47 Q369 49 394 65 L413 82 H341 Z" fill="url(#gtGlass)" stroke="#89949c" strokeOpacity=".32" strokeWidth="1" />
+                <path d="M420 70 Q428 76 434 84 L416 82 Z" fill="#26333c" stroke="#aeb6bd" strokeOpacity=".45" strokeWidth="1" />
 
                 {/* Character Beltline */}
                 <path
-                  d="M84 106 Q260 96 520 108"
+                  d="M82 106 Q260 94 519 107"
                   fill="none"
                   stroke="#ffffff"
                   strokeOpacity="0.22"
@@ -235,8 +243,11 @@ export function DriftIntro({ visible, lang, onFinish }: DriftIntroProps) {
                 />
 
                 {/* Crimson LED Tail Blade & Brake Glow */}
-                <path d="M50 98 L82 95" stroke="#ed1c24" strokeWidth="3.5" strokeLinecap="round" />
-                <path d="M540 106 L574 111" stroke="#fff9e2" strokeWidth="3" strokeLinecap="round" />
+                <path d="M48 105 Q59 101 77 101" stroke="#ed1c24" strokeWidth="4" strokeLinecap="round" />
+                <path d="M570 110 Q581 112 586 119" stroke="#fff9e2" strokeWidth="3.5" strokeLinecap="round" />
+                <path d="M205 80 L205 127 M339 82 L337 132" stroke="#151719" strokeOpacity=".75" strokeWidth="1.5" />
+                <path d="M241 111 L252 109 M354 110 L366 109" stroke="#dfe3e7" strokeOpacity=".68" strokeWidth="1.7" strokeLinecap="round" />
+                <path d="M545 104 Q559 102 571 108" fill="none" stroke="#fff" strokeOpacity=".65" strokeWidth="1.3" />
 
                 {/* Precision Alloy Wheels */}
                 <motion.g
